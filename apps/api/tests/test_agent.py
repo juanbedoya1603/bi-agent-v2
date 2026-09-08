@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
+from agents import SQLiteSession
 from agents.testing import ScriptedModel, assistant_message, function_call
 
 from bi_agent_api.agent import answer_question, build_agent
@@ -161,3 +163,66 @@ async def test_tool_enforces_three_attempts_per_turn() -> None:
     assert executions == 3
     limit_input = json.dumps(model.calls[4].input, default=str)
     assert "attempt_limit" in limit_input
+
+
+@pytest.mark.asyncio
+async def test_sqlite_session_keeps_context_between_messages(tmp_path: Path) -> None:
+    model = ScriptedModel(
+        [
+            [assistant_message("Colgate vendió $1.234 en agosto.")],
+            [assistant_message("En Medellín vendió $456.")],
+        ]
+    )
+    session = SQLiteSession("conversation-1", tmp_path / "sessions.sqlite3")
+
+    await answer_question(
+        "Ventas de Colgate en agosto de 2026",
+        make_settings(),
+        model=model,
+        sql_executor=lambda _: {},
+        session=session,
+    )
+    await answer_question(
+        "Ahora Medellín",
+        make_settings(),
+        model=model,
+        sql_executor=lambda _: {},
+        session=session,
+    )
+
+    second_call_input = json.dumps(model.calls[1].input, ensure_ascii=False, default=str)
+    assert "Ventas de Colgate en agosto de 2026" in second_call_input
+    assert "Colgate vendió $1.234 en agosto." in second_call_input
+    assert "Ahora Medellín" in second_call_input
+    session.close()
+    model.assert_complete()
+
+
+@pytest.mark.asyncio
+async def test_new_sqlite_session_has_no_previous_context(tmp_path: Path) -> None:
+    first_model = ScriptedModel([[assistant_message("Respuesta de la primera conversación.")]])
+    second_model = ScriptedModel([[assistant_message("Respuesta independiente.")]])
+    db_path = tmp_path / "sessions.sqlite3"
+    first_session = SQLiteSession("conversation-1", db_path)
+    second_session = SQLiteSession("conversation-2", db_path)
+
+    await answer_question(
+        "Pregunta privada de la primera conversación",
+        make_settings(),
+        model=first_model,
+        sql_executor=lambda _: {},
+        session=first_session,
+    )
+    await answer_question(
+        "Pregunta nueva",
+        make_settings(),
+        model=second_model,
+        sql_executor=lambda _: {},
+        session=second_session,
+    )
+
+    second_input = json.dumps(second_model.calls[0].input, ensure_ascii=False, default=str)
+    assert "Pregunta nueva" in second_input
+    assert "Pregunta privada de la primera conversación" not in second_input
+    first_session.close()
+    second_session.close()

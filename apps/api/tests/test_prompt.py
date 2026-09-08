@@ -20,6 +20,7 @@ def test_prompt_contains_full_schema_runtime_date_and_result_rules() -> None:
         "SELECT MIN([date]) AS min_date, MAX([date]) AS max_date",
         "cero filas no demuestra que una métrica sea cero",
         "no se encontraron datos coincidentes",
+        "nunca muestres SQL, nombres de tablas o views",
     )
     for fragment in expected_fragments:
         assert fragment in prompt
