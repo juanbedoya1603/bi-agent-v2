@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -32,6 +33,9 @@ class Settings(BaseSettings):
 
     query_timeout_seconds: int = Field(default=600, gt=0)
     max_result_rows: int = Field(default=200, ge=1, le=200)
+
+    session_db_path: Path = Path("tmp/bi_agent_sessions.sqlite3")
+    web_origin: str = "http://localhost:3000"
 
     def database_connection_string(self) -> str:
         required = {

@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from agents import Agent, ModelSettings, RunConfig, Runner
+from agents import Agent, ModelSettings, RunConfig, Runner, Session
 from agents.models.openai_responses import OpenAIResponsesModel
 from openai import AsyncOpenAI
 
@@ -36,6 +36,7 @@ async def answer_question(
     *,
     model: Any | None = None,
     sql_executor: SqlExecutor | None = None,
+    session: Session | None = None,
 ) -> tuple[str, BiAgentContext]:
     if model is None and not settings.openai_api_key:
         raise ValueError("OPENAI_API_KEY no está configurada.")
@@ -49,6 +50,7 @@ async def answer_question(
         question,
         context=context,
         max_turns=8,
+        session=session,
         run_config=RunConfig(
             tracing_disabled=True,
             trace_include_sensitive_data=False,

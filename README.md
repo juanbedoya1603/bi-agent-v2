@@ -27,10 +27,10 @@ El modelo puede escribir SQL. La seguridad real está en:
 - timeout;
 - máximo de filas retornadas.
 
-## Fase 1 implementada
+## Fase 3 implementada
 
-La API vive en `apps/api` y requiere Python 3.11. `apps/web` se mantiene como
-placeholder hasta la fase de chat usable.
+La API vive en `apps/api` y requiere Python 3.11. El chat usable vive en `apps/web`
+y utiliza Sessions SQLite del Agents SDK para mantener contexto entre turnos.
 
 ```powershell
 py -3.11 -m venv .venv
@@ -44,9 +44,22 @@ Endpoints:
 
 - `GET /health`
 - `POST /api/v1/chat` con `{"message": "Ventas de Colgate en Bogotá en agosto de 2026"}`
+- `POST /api/v1/conversations`
+- `GET /api/v1/conversations`
+- `GET /api/v1/conversations/{conversation_id}/messages`
+- `POST /api/v1/conversations/{conversation_id}/messages`
 
 La respuesta contiene el texto final del agente y, cuando la última ejecución fue
 exitosa, `data` con columnas, filas, conteo y bandera de truncamiento.
+
+Para iniciar el frontend:
+
+```powershell
+Set-Location apps/web
+Copy-Item .env.local.example .env.local
+npm install
+npm run dev
+```
 
 ## Seguridad de SQL Server
 
