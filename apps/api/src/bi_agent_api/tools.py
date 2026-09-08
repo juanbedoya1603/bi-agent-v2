@@ -18,6 +18,7 @@ class BiAgentContext:
     sql_executor: SqlExecutor
     sql_attempts: int = 0
     latest_result: dict[str, Any] | None = field(default=None)
+    sql_history: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _safe_error_message(error: Exception, settings: Settings) -> str:
@@ -39,6 +40,8 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
     """Ejecuta una consulta T-SQL de solo lectura sobre las tres views autorizadas."""
     context = wrapper.context
     context.sql_attempts += 1
+    history_entry: dict[str, Any] = {"sql": sql, "guard_passed": False, "result": None}
+    context.sql_history.append(history_entry)
     if context.sql_attempts > context.settings.max_sql_attempts_per_turn:
         result = {
             "ok": False,
@@ -47,6 +50,7 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
                 "message": "Se alcanzó el máximo de intentos SQL para este turno.",
             },
         }
+        history_entry["result"] = result
         context.latest_result = result
         return result
 
@@ -57,9 +61,11 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
             "ok": False,
             "error": {"type": "sql_guard", "code": error.code, "message": error.message},
         }
+        history_entry["result"] = result
         context.latest_result = result
         return result
 
+    history_entry["guard_passed"] = True
     try:
         result = await asyncio.to_thread(context.sql_executor, validated_sql)
     except Exception as error:  # La tool convierte errores DB en observaciones corregibles.
@@ -70,6 +76,7 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
                 "message": _safe_error_message(error, context.settings),
             },
         }
+    history_entry["result"] = result
     context.latest_result = result
     return result
 

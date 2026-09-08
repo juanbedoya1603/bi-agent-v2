@@ -1,0 +1,156 @@
+[
+  {
+    "id": "sales_brand_city",
+    "prompt": "Dame las ventas de Colgate en Bogotá en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "brandName='COLGATE'", "cityName='BOGOTA'", ">='2026-08-01'", "<'2026-09-01'"], "answer_contains_any": [["1.250.000", "1,250,000", "1250000"]]},
+    "fake_results": [{"columns": ["sales"], "rows": [[1250000]]}]
+  },
+  {
+    "id": "units_brand",
+    "prompt": "¿Cuántas unidades vendió Florhuila en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["SUM(productQuantity)", "brandName='FLORHUILA'", ">='2026-08-01'", "<'2026-09-01'"], "answer_contains_any": [["25.000", "25,000", "25000"]]},
+    "fake_results": [{"columns": ["units"], "rows": [[25000]]}]
+  },
+  {
+    "id": "tickets_category_city",
+    "critical": true,
+    "prompt": "¿Cuántos tickets tuvieron productos de arroz en Bogotá en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["COUNT(DISTINCT uniqueTicketPerStore)", "categoryName='ARROZ'", "cityName='BOGOTA'"], "not_contains": ["COUNT(idTicket)", "COUNT(DISTINCT idTicket)"], "answer_contains_any": [["4.000", "4,000", "4000"]]},
+    "fake_results": [{"columns": ["tickets"], "rows": [[4000]]}]
+  },
+  {
+    "id": "average_price",
+    "prompt": "¿Cuál fue el precio medio de Colgate en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["SUM(totalSaleValue)", "SUM(productQuantity)", "NULLIF", "brandName='COLGATE'"], "answer_contains_any": [["50", "50,0"]]},
+    "fake_results": [{"columns": ["average_price"], "rows": [[50.0]]}]
+  },
+  {
+    "id": "average_ticket",
+    "prompt": "¿Cuál fue el ticket promedio de productos Colgate en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM(totalSaleValue)", "COUNT(DISTINCT uniqueTicketPerStore)", "brandName='COLGATE'"], "contains_any": [["NULLIF", "CASE WHEN"]], "answer_contains_any": [["312,5", "312.5"]]},
+    "fake_results": [{"columns": ["average_ticket"], "rows": [[312.5]]}]
+  },
+  {
+    "id": "top_products",
+    "prompt": "Top 10 productos de arroz por ventas en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["TOP 10", "SUM(totalSaleValue)", "categoryName='ARROZ'", "GROUP BY", "ORDER BY"], "answer_contains": ["ARROZ TEST A"], "answer_contains_any": [["900.001", "900,001", "900001"]]},
+    "fake_results": [{"columns": ["productId", "productName", "barCode", "manufacturerName", "brandName", "categoryName", "sales", "units"], "rows": [[101, "ARROZ TEST A", "7701000000101", "FABRICANTE TEST", "MARCA TEST A", "ARROZ", 900001, 18000], [102, "ARROZ TEST B", "7701000000102", "FABRICANTE TEST", "MARCA TEST B", "ARROZ", 800002, 16000]]}]
+  },
+  {
+    "id": "ambiguous_ranking",
+    "prompt": "¿Cuáles fueron los productos más importantes de arroz en agosto de 2026?",
+    "expected": {"sql_calls_min": 0, "sql_calls_max": 0, "answer_contains_any": [["ventas", "unidades", "tickets"], ["cuál", "métrica", "criterio"]]},
+    "fake_results": []
+  },
+  {
+    "id": "month_without_year",
+    "prompt": "Ventas de Colgate en agosto.",
+    "expected": {"sql_calls_min": 0, "sql_calls_max": 0, "answer_contains_any": [["año", "qué año"]]},
+    "fake_results": []
+  },
+  {
+    "id": "ean_sales",
+    "prompt": "¿Cuánto vendió el producto con EAN 7700000000001 en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["barCode='7700000000001'", "SUM(totalSaleValue)"], "answer_contains_any": [["770.001", "770,001", "770001"]]},
+    "fake_results": [{"columns": ["sales"], "rows": [[770001]]}]
+  },
+  {
+    "id": "ambiguous_product",
+    "critical": true,
+    "prompt": "Ventas de Arroz Florhuila 500 g en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_Products"], "contains": ["productName"], "not_contains": ["SUM(totalSaleValue)"], "answer_contains": ["TRADICIONAL", "PREMIUM"], "answer_contains_any": [["cuál", "aclar", "confirma"]]},
+    "fake_results": [{"columns": ["productId", "productName", "barCode"], "rows": [[201, "ARROZ FLORHUILA TRADICIONAL 500 G", "7701000000201"], [202, "ARROZ FLORHUILA PREMIUM 500 G", "7701000000202"]]}]
+  },
+  {
+    "id": "category_share",
+    "critical": true,
+    "prompt": "¿Cuál fue el share de ventas de Colgate dentro de cuidado oral en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["SUM(totalSaleValue)", "brandName", "COLGATE", "categoryName='CUIDADO ORAL'", "NULLIF"], "contains_any": [["CASE WHEN", "OVER()"]], "answer_contains_any": [["48%", "48 %", "48.0%", "48,0%", "0,48", "0.48"]]},
+    "fake_results": [{"columns": ["share", "colgate_sales", "total_category_sales"], "rows": [[0.48, 480000, 1000000]]}]
+  },
+  {
+    "id": "explicit_competitor_share",
+    "critical": true,
+    "prompt": "¿Cuál fue el share de Florhuila frente a Roa y Diana en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM(totalSaleValue)", "FLORHUILA", "ROA", "DIANA", "NULLIF"], "answer_contains_any": [["48%", "48 %", "48.0%", "48,0%", "0,48", "0.48"]]},
+    "fake_results": [{"columns": ["brand", "sales", "share"], "rows": [["FLORHUILA", 480000, 0.48], ["ROA", 320000, 0.32], ["DIANA", 200000, 0.2]]}]
+  },
+  {
+    "id": "competitor_share_500g",
+    "critical": true,
+    "prompt": "¿Cuál fue el share de Florhuila frente a Roa y Diana únicamente en presentaciones de 500 g en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["FLORHUILA", "ROA", "DIANA", "netQuantityValue=500", "NULLIF"], "answer_contains_any": [["48%", "48 %", "48.0%", "48,0%", "0,48", "0.48"]]},
+    "fake_results": [{"columns": ["share"], "rows": [[0.48]]}]
+  },
+  {
+    "id": "numeric_distribution",
+    "critical": true,
+    "prompt": "¿Cuál fue la distribución numérica de Colgate en Bogotá en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["COUNT(DISTINCT", "idStore", "brandName", "COLGATE", "cityName='BOGOTA'", "NULLIF"], "contains_any": [["CASE WHEN", "CTE"]], "answer_contains_any": [["40%", "40 %", "40.0%", "40,0%", "0,4", "0.4"]]},
+    "fake_results": [{"columns": ["stores_selling_colgate", "stores_selling_category", "numeric_distribution"], "rows": [[40, 100, 0.4]]}]
+  },
+  {
+    "id": "penetration",
+    "critical": true,
+    "prompt": "¿Cuál fue la penetración de Florhuila en Bogotá en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["COUNT(DISTINCT", "idStore", "brandName", "FLORHUILA", "cityName='BOGOTA'", "NULLIF"], "contains_any": [["CASE WHEN", "WITH"]], "answer_contains_any": [["25%", "25 %", "25.0%", "25,0%", "0,25", "0.25"]]},
+    "fake_results": [{"columns": ["penetration", "stores_with_brand", "stores_active"], "rows": [[0.25, 25, 100]]}]
+  },
+  {
+    "id": "rotation_by_city",
+    "prompt": "Rotación de Florhuila por ciudad en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["SUM(productQuantity)", "COUNT(DISTINCT", "idStore", "brandName='FLORHUILA'", "GROUP BY", "cityName", "NULLIF"], "answer_contains": ["BOGOTA"], "answer_contains_any": [["250", "250,0"]]},
+    "fake_results": [{"columns": ["cityName", "units", "stores_selling", "rotation"], "rows": [["BOGOTA", 25000, 100, 250.0], ["MEDELLIN", 10000, 50, 200.0]]}]
+  },
+  {
+    "id": "mom_growth",
+    "critical": true,
+    "prompt": "¿Cómo crecieron las ventas de Florhuila en agosto de 2026 frente a julio de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM", "totalSaleValue", "brandName='FLORHUILA'", "2026-07-01", "2026-08-01", "2026-09-01", "NULLIF"], "answer_contains_any": [["25%", "25 %", "25.0%", "25,0%", "+25,0%", "0,25", "0.25"]]},
+    "fake_results": [{"columns": ["july_sales", "august_sales", "growth"], "rows": [[1000000, 1250000, 0.25]]}]
+  },
+  {
+    "id": "purchase_frequency",
+    "prompt": "¿Cuál fue la frecuencia de compra de Colgate en Bogotá en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["COUNT(DISTINCT uniqueTicketPerStore)", "COUNT(DISTINCT", "idStore", "brandName='COLGATE'", "cityName='BOGOTA'", "NULLIF"], "answer_contains_any": [["40", "40,0"]]},
+    "fake_results": [{"columns": ["tickets", "stores_selling", "frequency"], "rows": [[4000, 100, 40.0]]}]
+  },
+  {
+    "id": "units_per_ticket",
+    "prompt": "¿Cuántas unidades por ticket vendió Colgate en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM(productQuantity)", "COUNT(DISTINCT uniqueTicketPerStore)", "brandName='COLGATE'", "NULLIF"], "answer_contains_any": [["6,25", "6.25"]]},
+    "fake_results": [{"columns": ["units", "tickets", "units_per_ticket"], "rows": [[25000, 4000, 6.25]]}]
+  },
+  {
+    "id": "sales_by_business_type",
+    "prompt": "Ventas de Colgate por tipo de negocio en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_Stores"], "contains": ["SUM(totalSaleValue)", "brandName='COLGATE'", "economicActivity_fix", "GROUP BY"], "answer_contains": ["MINIMERCADO"], "answer_contains_any": [["700.003", "700,003", "700003"]]},
+    "fake_results": [{"columns": ["economicActivity_fix", "sales"], "rows": [["MINIMERCADO", 700003], ["TIENDA", 549997]]}]
+  },
+  {
+    "id": "manufacturer_by_brand",
+    "prompt": "Unidades de Papeles Nacionales por marca en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM(productQuantity)", "manufacturerName='PAPELES NACIONALES'", "brandName", "GROUP BY"], "not_contains": ["brandName='PAPELES NACIONALES'"], "answer_contains": ["FAMILIA TEST"], "answer_contains_any": [["10.001", "10,001", "10001"]]},
+    "fake_results": [{"columns": ["brandName", "units"], "rows": [["FAMILIA TEST", 10001], ["OTRA TEST", 9999]]}]
+  },
+  {
+    "id": "why_sales_fell",
+    "prompt": "¿Por qué cayeron las ventas de Florhuila en agosto de 2026 frente a julio de 2026?",
+    "expected": {"sql_calls_min": 2, "sql_calls_max": 3, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["brandName='FLORHUILA'", "2026-07-01", "2026-09-01"], "answer_contains_any": [["1.000.000", "1,000,000", "1000000"], ["800.000", "800,000", "800000"]]},
+    "fake_results": [{"columns": ["month", "sales", "units", "tickets", "stores_selling", "average_price"], "rows": [[7, 1000000, 20000, 4000, 100, 50], [8, 800000, 15000, 3200, 90, 53.3333]]}, {"columns": ["cityName", "july_sales", "august_sales", "change"], "rows": [["BOGOTA", 600000, 400000, -200000], ["MEDELLIN", 400000, 400000, 0]]}, {"columns": ["productName", "july_sales", "august_sales", "change"], "rows": [["ARROZ FLORHUILA TEST", 500000, 320000, -180000]]}]
+  },
+  {
+    "id": "outside_coverage",
+    "critical": true,
+    "prompt": "Ventas de Colgate en enero de 2020.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months"], "contains": ["MIN(date)", "MAX(date)"], "not_contains": ["SUM(totalSaleValue)"], "answer_contains_any": [["fuera", "no cubre"], ["2025-08-01", "agosto de 2025"]]},
+    "fake_results": [{"columns": ["min_date", "max_date"], "rows": [["2025-08-01", "2026-09-07"]]}]
+  },
+  {
+    "id": "no_matching_rows",
+    "critical": true,
+    "prompt": "Ventas de una marca inexistente en Bogotá en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM(totalSaleValue)", "brandName", "cityName='BOGOTA'"], "answer_contains_any": [["no se encontraron", "sin datos", "no hay datos"]], "answer_not_contains": ["$0", "ventas fueron 0", "ventas fueron de 0"]},
+    "fake_results": [{"columns": ["sales"], "rows": []}]
+  }
+]

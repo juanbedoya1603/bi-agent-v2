@@ -55,6 +55,9 @@ async def test_runner_calls_tool_and_uses_its_output() -> None:
     assert answer == "Colgate vendió $1.234 en Bogotá en agosto de 2026."
     assert executed == [sql]
     assert context.sql_attempts == 1
+    assert context.sql_history == [
+        {"sql": sql, "guard_passed": True, "result": context.latest_result}
+    ]
     second_call_input = json.dumps(model.calls[1].input, default=str)
     assert "1234" in second_call_input
     model.assert_complete()
@@ -99,6 +102,35 @@ async def test_tool_error_returns_to_model_and_sql_can_be_corrected() -> None:
     error_input = json.dumps(model.calls[1].input, default=str)
     assert "Invalid column name" in error_input
     model.assert_complete()
+
+
+@pytest.mark.asyncio
+async def test_guard_rejection_is_captured_without_reaching_executor() -> None:
+    unsafe_sql = "DELETE FROM dbo.VW_Products"
+    model = ScriptedModel(
+        [
+            [function_call("run_readonly_sql", {"sql": unsafe_sql}, call_id="sql-1")],
+            [assistant_message("La consulta fue rechazada por el guard de solo lectura.")],
+        ]
+    )
+    executions = 0
+
+    def executor(_: str) -> dict[str, Any]:
+        nonlocal executions
+        executions += 1
+        return {}
+
+    _, context = await answer_question(
+        "Intenta una consulta insegura",
+        make_settings(),
+        model=model,
+        sql_executor=executor,
+    )
+
+    assert executions == 0
+    assert context.sql_history[0]["sql"] == unsafe_sql
+    assert context.sql_history[0]["guard_passed"] is False
+    assert context.sql_history[0]["result"]["error"]["type"] == "sql_guard"
 
 
 @pytest.mark.asyncio
