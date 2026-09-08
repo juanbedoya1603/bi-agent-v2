@@ -87,3 +87,47 @@ def test_execute_query_fetches_201_and_returns_only_200() -> None:
     assert result["row_count"] == 200
     assert result["truncated"] is True
     assert len(result["rows"]) == 200
+
+
+def test_sql_auth_connection_string() -> None:
+    connection_string = db_settings(analytics_db_auth="sql").database_connection_string()
+
+    assert "SERVER=sql.internal,1433" in connection_string
+    assert "DATABASE=analytics" in connection_string
+    assert "UID=bi_reader" in connection_string
+    assert "PWD={secret}" in connection_string
+    assert "Authentication=ActiveDirectoryInteractive" not in connection_string
+
+
+def test_entra_interactive_connection_string() -> None:
+    connection_string = db_settings(
+        analytics_db_auth="entra_interactive",
+        analytics_db_user="person@company.com",
+        analytics_db_password="",
+    ).database_connection_string()
+
+    assert "UID=person@company.com" in connection_string
+    assert "Authentication=ActiveDirectoryInteractive" in connection_string
+    assert "Encrypt=yes" in connection_string
+    assert "TrustServerCertificate=no" in connection_string
+
+
+def test_entra_interactive_connection_string_does_not_include_password() -> None:
+    connection_string = db_settings(
+        analytics_db_auth="entra_interactive",
+        analytics_db_password="should-not-be-used",
+    ).database_connection_string()
+
+    assert "PWD=" not in connection_string
+    assert "should-not-be-used" not in connection_string
+
+
+def test_both_auth_modes_keep_application_intent_readonly() -> None:
+    sql_connection_string = db_settings(analytics_db_auth="sql").database_connection_string()
+    entra_connection_string = db_settings(
+        analytics_db_auth="entra_interactive",
+        analytics_db_password="",
+    ).database_connection_string()
+
+    assert "ApplicationIntent=ReadOnly" in sql_connection_string
+    assert "ApplicationIntent=ReadOnly" in entra_connection_string
