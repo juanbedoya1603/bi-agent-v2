@@ -1,0 +1,100 @@
+[
+  {
+    "id": "holdout_sales_palmolive_medellin",
+    "prompt": "¿A cuánto ascendió la venta de Palmolive en Medellín durante marzo de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "brandName='PALMOLIVE'", "cityName='MEDELLIN'", "2026-03-01", "2026-04-01"], "answer_contains_any": [["987.654", "987,654", "987654"]]},
+    "fake_results": [{"columns": ["sales"], "rows": [[987654]]}]
+  },
+  {
+    "id": "holdout_units_manufacturer_alpina",
+    "prompt": "Necesito las unidades del fabricante Alpina para junio de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["SUM(productQuantity)", "manufacturerName='ALPINA'", "2026-06-01", "2026-07-01"], "not_contains": ["brandName='ALPINA'"], "answer_contains_any": [["43.210", "43,210", "43210"]]},
+    "fake_results": [{"columns": ["units"], "rows": [[43210]]}]
+  },
+  {
+    "id": "holdout_tickets_business_type",
+    "prompt": "Para mayo de 2026, muéstrame los tickets con bebidas separados por tipo de negocio en Cali.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["COUNT(DISTINCT uniqueTicketPerStore)", "cityName='CALI'", "economicActivity_fix", "GROUP BY"], "contains_any": [["categoryName='BEBIDAS'", "categoryName LIKE '%BEBID%'"]], "not_contains": ["COUNT(DISTINCT idTicket)"], "answer_contains": ["SUPERMERCADO"], "answer_contains_any": [["2.345", "2,345", "2345"]]},
+    "fake_results": [{"columns": ["economicActivity_fix", "tickets"], "rows": [["SUPERMERCADO", 2345], ["TIENDA DE BARRIO", 1234]]}]
+  },
+  {
+    "id": "holdout_average_price_by_city",
+    "prompt": "Compara por ciudad el precio promedio de Dove en julio de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "SUM(productQuantity)", "brandName='DOVE'", "cityName", "GROUP BY"], "contains_any": [["NULLIF", "CASE WHEN"]], "answer_contains": ["CALI"], "answer_contains_any": [["12.345", "12,345", "12345"]]},
+    "fake_results": [{"columns": ["cityName", "sales", "units", "average_price"], "rows": [["CALI", 1234500, 100, 12345], ["BARRANQUILLA", 543210, 50, 10864.2]]}]
+  },
+  {
+    "id": "holdout_category_share_rexona",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "En abril de 2026, ¿qué participación en valor logró Rexona dentro de Cuidado Personal?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["SUM(totalSaleValue)", "REXONA", "CUIDADO PERSONAL", "NULLIF"], "answer_contains_any": [["37%", "37 %", "37.0%", "37,0%", "37.00%", "37,00%", "0.37", "0,37"]], "semantic_checks": [{"type": "category_share", "target": "REXONA"}]},
+    "fake_results": [{"columns": ["share", "brand_sales", "category_sales"], "rows": [[0.37, 370000, 1000000]]}]
+  },
+  {
+    "id": "holdout_competitive_share_1000g",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "Entre Doria, La Muñeca y Monticello, ¿qué cuota de ventas tuvo Doria en febrero de 2026 contando solo empaques de 1000 g?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["DORIA", "LA MUÑECA", "MONTICELLO", "netQuantityValue=1000"], "contains_any": [["NULLIF", "CASE WHEN"]], "answer_contains_any": [["45%", "45 %", "45.0%", "45,0%", "0.45", "0,45"]], "semantic_checks": [{"type": "competitive_share", "target": "DORIA", "brands": ["DORIA", "LA MUÑECA", "MONTICELLO"], "presentation": 1000}]},
+    "fake_results": [{"columns": ["share", "doria_sales", "universe_sales"], "rows": [[0.45, 450000, 1000000]]}]
+  },
+  {
+    "id": "holdout_dn_alpina_cali",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "Calcula la DN de Alpina para Cali en mayo de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["COUNT(DISTINCT", "idStore", "ALPINA", "cityName='CALI'", "NULLIF"], "answer_contains_any": [["60%", "60 %", "60.0%", "60,0%", "0.6", "0,6"]], "semantic_checks": [{"type": "dn", "target": "ALPINA"}]},
+    "fake_results": [{"columns": ["dn", "stores_with_brand", "stores_in_categories"], "rows": [[0.6, 60, 100]]}]
+  },
+  {
+    "id": "holdout_penetration_dove_barranquilla",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "¿Qué penetración alcanzó Dove entre las tiendas activas de Barranquilla en abril de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["COUNT(DISTINCT", "idStore", "DOVE", "cityName='BARRANQUILLA'", "NULLIF"], "answer_contains_any": [["30%", "30 %", "30.0%", "30,0%", "0.3", "0,3"]], "semantic_checks": [{"type": "penetration", "target": "DOVE"}]},
+    "fake_results": [{"columns": ["penetration", "stores_with_brand", "active_stores"], "rows": [[0.3, 30, 100]]}]
+  },
+  {
+    "id": "holdout_mom_january_cross_year",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "¿Cómo variaron las ventas de Alpina en enero de 2026 frente al mes inmediatamente anterior?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["brandName='ALPINA'", "2025-12-01", "2026-01-01", "2026-02-01", "NULLIF"], "answer_contains_any": [["20%", "20 %", "20.0%", "20,0%", "0.2", "0,2"]], "semantic_checks": [{"type": "mom", "previous_start": "2025-12-01", "current_start": "2026-01-01", "current_end": "2026-02-01"}]},
+    "fake_results": [{"columns": ["december_sales", "january_sales", "growth"], "rows": [[1000000, 1200000, 0.2]]}]
+  },
+  {
+    "id": "holdout_ean_sales_cali",
+    "prompt": "Consulta las ventas en Cali del EAN 7709999999992 durante noviembre de 2025.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "barCode='7709999999992'", "cityName='CALI'", "2025-11-01", "2025-12-01"], "answer_contains_any": [["654.321", "654,321", "654321"]]},
+    "fake_results": [{"columns": ["sales", "units", "tickets"], "rows": [[654321, 9876, 3210]]}]
+  },
+  {
+    "id": "holdout_ambiguous_yogurt",
+    "critical": true,
+    "prompt": "Dime las ventas de Yogur Alpina Fresa 150 g en junio de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_Products"], "contains": ["productName"], "not_contains": ["SUM(totalSaleValue)"], "answer_contains": ["ENTERO", "DESLACTOSADO"], "answer_contains_any": [["cuál", "elige", "confirm", "ambos"]]},
+    "fake_results": [{"columns": ["productId", "productName", "barCode", "netQuantityValue", "unitMeasure"], "rows": [[301, "YOGUR ALPINA FRESA ENTERO 150 G", "7702000000301", 150, "G"], [302, "YOGUR ALPINA FRESA DESLACTOSADO 150 G", "7702000000302", 150, "G"]]}]
+  },
+  {
+    "id": "holdout_why_palmolive_fell",
+    "prompt": "Las ventas de Palmolive bajaron en julio de 2026 contra junio. ¿Qué factores visibles en los datos explican el cambio?",
+    "expected": {"sql_calls_min": 2, "sql_calls_max": 3, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["PALMOLIVE", "2026-06-01", "2026-08-01"], "answer_contains_any": [["900.000", "900,000", "900000"], ["720.000", "720,000", "720000"]], "semantic_checks": [{"type": "observable_causality"}]},
+    "fake_results": [{"columns": ["month", "sales", "units", "tickets", "stores_selling", "average_price"], "rows": [[6, 900000, 18000, 3000, 90, 50], [7, 720000, 12000, 2400, 80, 60]]}, {"columns": ["cityName", "june_sales", "july_sales", "change"], "rows": [["CALI", 500000, 320000, -180000], ["MEDELLIN", 400000, 400000, 0]]}, {"columns": ["productName", "june_sales", "july_sales", "change"], "rows": [["PALMOLIVE TEST", 600000, 420000, -180000]]}]
+  },
+  {
+    "id": "holdout_multicategory_brand_share",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "Nestlé aparece en varias categorías. ¿Qué share de ventas tuvo en junio de 2026 dentro del conjunto de todas las categorías donde participó ese mes?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products"], "contains": ["NESTLE", "categoryName", "SUM(totalSaleValue)", "NULLIF"], "answer_contains_any": [["22%", "22 %", "22.0%", "22,0%", "0.22", "0,22"]], "semantic_checks": [{"type": "category_share", "target": "NESTLE"}]},
+    "fake_results": [{"columns": ["share", "brand_sales", "categories_sales"], "rows": [[0.22, 220000, 1000000]]}]
+  },
+  {
+    "id": "holdout_null_aggregate",
+    "critical": true,
+    "prompt": "¿Cuánto vendió la marca FANTASMA en Bucaramanga en marzo de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM(totalSaleValue)", "brandName='FANTASMA'", "cityName='BUCARAMANGA'"], "answer_contains_any": [["sin datos", "no se encontraron", "no hay coincidencias", "no hay datos"]], "answer_not_contains": ["$0", "vendió 0", "ventas de 0"]},
+    "fake_results": [{"columns": ["sales"], "rows": [[null]]}]
+  }
+]

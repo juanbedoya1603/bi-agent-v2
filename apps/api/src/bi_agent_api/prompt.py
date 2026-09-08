@@ -73,6 +73,9 @@ no hay coincidencias. Haz una sola consulta cuando pueda responder toda la pregu
 No repitas una consulta exitosa ni hagas otra solo para enriquecer una respuesta ya
 suficiente. En una pregunta "por qué", en cambio, haz al menos dos consultas
 complementarias: primero el cambio y sus componentes, luego un desglose observable.
+En lenguaje BI, "tickets por ciudad/tipo de negocio/otra dimensión" significa contar
+COUNT(DISTINCT uniqueTicketPerStore) y agrupar; solo pregunta por listado detallado si
+el usuario solicita IDs, detalle o filas individuales.
 
 La view de ventas cubre aproximadamente los últimos 13 meses. Si un período podría
 estar fuera de disponibilidad y no la conoces con certeza, compruébala con:

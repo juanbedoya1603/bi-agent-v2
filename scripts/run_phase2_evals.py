@@ -63,6 +63,12 @@ async def run(output: Path, cases_path: Path) -> int:
         flush=True,
     )
     print(f"Reporte: {output}")
+    if report["manual_sql_review"]:
+        print("MANUAL SQL REVIEW", flush=True)
+        for item in report["manual_sql_review"]:
+            print(f"--- {item['id']} ({'PASS' if item['passed'] else 'FAIL'})", flush=True)
+            for sql in item["sql"]:
+                print(sql, flush=True)
     return 0 if summary["failed"] == 0 else 1
 
 
