@@ -1,13 +1,13 @@
 from collections.abc import Callable
 from typing import Any
 
-from agents import Agent, RunConfig, Runner
+from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.models.openai_responses import OpenAIResponsesModel
 from openai import AsyncOpenAI
 
 from .config import Settings
 from .database import execute_query
-from .prompt import SYSTEM_PROMPT
+from .prompt import build_system_prompt
 from .tools import BiAgentContext, SqlExecutor, run_readonly_sql
 
 
@@ -23,8 +23,9 @@ def _production_model(settings: Settings) -> OpenAIResponsesModel:
 def build_agent(settings: Settings, *, model: Any | None = None) -> Agent[BiAgentContext]:
     return Agent[BiAgentContext](
         name="BI Agent",
-        instructions=SYSTEM_PROMPT,
+        instructions=build_system_prompt(),
         model=model or _production_model(settings),
+        model_settings=ModelSettings(parallel_tool_calls=False, store=False),
         tools=[run_readonly_sql],
     )
 

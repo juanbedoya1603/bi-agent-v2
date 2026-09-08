@@ -4,12 +4,19 @@ from typing import Any
 import pytest
 from agents.testing import ScriptedModel, assistant_message, function_call
 
-from bi_agent_api.agent import answer_question
+from bi_agent_api.agent import answer_question, build_agent
 from bi_agent_api.config import Settings
 
 
 def make_settings() -> Settings:
     return Settings(_env_file=None, openai_api_key="", openai_model="test-model")
+
+
+def test_agent_disables_parallel_tool_calls_and_response_storage() -> None:
+    agent = build_agent(make_settings(), model=ScriptedModel())
+
+    assert agent.model_settings.parallel_tool_calls is False
+    assert agent.model_settings.store is False
 
 
 @pytest.mark.asyncio

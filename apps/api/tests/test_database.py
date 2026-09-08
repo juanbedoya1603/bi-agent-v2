@@ -6,15 +6,16 @@ from bi_agent_api.database import execute_query
 
 class FakeCursor:
     description = [("id",), ("value",)]
-    timeout = 0
 
-    def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+    def __init__(self, connection: "FakeConnection", rows: list[tuple[Any, ...]]) -> None:
+        self.connection = connection
         self.rows = rows
         self.sql = ""
         self.fetch_size = 0
         self.closed = False
 
     def execute(self, sql: str) -> None:
+        assert self.connection.timeout == 600
         self.sql = sql
 
     def fetchmany(self, size: int) -> list[tuple[Any, ...]]:
@@ -26,8 +27,10 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, cursor: FakeCursor) -> None:
-        self.fake_cursor = cursor
+    timeout = 0
+
+    def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+        self.fake_cursor = FakeCursor(self, rows)
         self.closed = False
 
     def cursor(self) -> FakeCursor:
@@ -49,8 +52,8 @@ def db_settings(**overrides: Any) -> Settings:
 
 
 def test_execute_query_returns_rows_and_closes_resources() -> None:
-    cursor = FakeCursor([(1, "one"), (2, "two")])
-    connection = FakeConnection(cursor)
+    connection = FakeConnection([(1, "one"), (2, "two")])
+    cursor = connection.fake_cursor
 
     result = execute_query(
         "SELECT id, value FROM dbo.VW_Products",
@@ -65,13 +68,13 @@ def test_execute_query_returns_rows_and_closes_resources() -> None:
         "row_count": 2,
         "truncated": False,
     }
-    assert cursor.timeout == 600
+    assert connection.timeout == 600
     assert cursor.closed and connection.closed
 
 
 def test_execute_query_fetches_201_and_returns_only_200() -> None:
-    cursor = FakeCursor([(number, f"row-{number}") for number in range(201)])
-    connection = FakeConnection(cursor)
+    connection = FakeConnection([(number, f"row-{number}") for number in range(201)])
+    cursor = connection.fake_cursor
 
     result = execute_query(
         "SELECT id, value FROM dbo.VW_Products ORDER BY id",

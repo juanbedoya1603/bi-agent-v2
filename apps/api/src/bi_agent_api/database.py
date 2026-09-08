@@ -10,7 +10,6 @@ from .config import Settings
 
 class Cursor(Protocol):
     description: Any
-    timeout: int
 
     def execute(self, sql: str) -> Any: ...
 
@@ -20,6 +19,8 @@ class Cursor(Protocol):
 
 
 class Connection(Protocol):
+    timeout: int
+
     def cursor(self) -> Cursor: ...
 
     def close(self) -> None: ...
@@ -51,8 +52,8 @@ def execute_query(
     cursor: Cursor | None = None
     try:
         connection = connect(settings.database_connection_string())
+        connection.timeout = settings.query_timeout_seconds
         cursor = connection.cursor()
-        cursor.timeout = settings.query_timeout_seconds
         cursor.execute(sql)
 
         columns = [str(column[0]) for column in cursor.description]
