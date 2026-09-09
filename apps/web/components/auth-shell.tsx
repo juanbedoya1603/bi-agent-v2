@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, KeyRound, Pencil, Plus, RefreshCw, Shield, UserRound, X } from "lucide-react";
+import { ArrowLeft, BarChart3, KeyRound, Pencil, Plus, RefreshCw, Shield, UserRound, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
 import { ChatWorkspace } from "@/components/chat-workspace";
@@ -9,15 +9,18 @@ import { api, User } from "@/lib/api";
 function AuthCard({
   title,
   subtitle,
+  topAction,
   children,
 }: {
   title: string;
   subtitle: string;
+  topAction?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <main className="auth-page">
       <section className="auth-card">
+        {topAction}
         <div className="auth-mark"><BarChart3 size={24} /></div>
         <p className="eyebrow">BI Agent</p>
         <h1>{title}</h1>
@@ -59,7 +62,15 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
   );
 }
 
-function ChangePassword({ user, onChanged }: { user: User; onChanged: (user: User) => void }) {
+function ChangePassword({
+  user,
+  onBackToLogin,
+  onChanged,
+}: {
+  user: User;
+  onBackToLogin: () => void;
+  onChanged: (user: User) => void;
+}) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -81,7 +92,16 @@ function ChangePassword({ user, onChanged }: { user: User; onChanged: (user: Use
   }
 
   return (
-    <AuthCard title="Crea una contraseña nueva" subtitle={`Hola, ${user.display_name}. Debes cambiar tu contraseña temporal antes de continuar.`}>
+    <AuthCard
+      title="Crea una contraseña nueva"
+      subtitle={`Hola, ${user.display_name}. Debes cambiar tu contraseña temporal antes de continuar.`}
+      topAction={(
+        <button className="auth-back" type="button" onClick={onBackToLogin}>
+          <ArrowLeft aria-hidden="true" size={16} />
+          Volver al login
+        </button>
+      )}
+    >
       <form className="auth-form" onSubmit={submit}>
         <label>Contraseña temporal<input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required /></label>
         <label>Nueva contraseña<input type="password" minLength={10} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required /></label>
@@ -241,7 +261,9 @@ export function AuthShell() {
   useEffect(() => { api.me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false)); }, []);
   if (loading) return <main className="auth-page"><RefreshCw className="spin" aria-label="Cargando" /></main>;
   if (!user) return <Login onLogin={setUser} />;
-  if (user.must_change_password) return <ChangePassword user={user} onChanged={setUser} />;
+  if (user.must_change_password) {
+    return <ChangePassword user={user} onBackToLogin={() => setUser(null)} onChanged={setUser} />;
+  }
 
   async function logout() {
     try { await api.logout(); } finally { setUser(null); setManageUsers(false); }

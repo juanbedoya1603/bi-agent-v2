@@ -68,9 +68,20 @@ function formatDate(value: string) {
   return date.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
 }
 
-function formatCell(value: unknown) {
+function isIdentifierColumn(column: string) {
+  const tokens = column
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((token) => token.toLowerCase());
+
+  return tokens.length > 1 && (tokens[0] === "id" || tokens.at(-1) === "id");
+}
+
+function formatCell(value: unknown, column?: string) {
   if (value === null || value === undefined) return "—";
   if (typeof value === "boolean") return value ? "Sí" : "No";
+  if (column && isIdentifierColumn(column)) return String(value);
   if (typeof value === "number") return value.toLocaleString("es-CO");
   return String(value);
 }
@@ -106,7 +117,9 @@ function ResultTable({ data }: { data: TableData }) {
   async function copyTable() {
     const text = [
       data.columns.join("\t"),
-      ...data.rows.map((row) => row.map(formatCell).join("\t")),
+      ...data.rows.map((row) => row.map((value, columnIndex) => (
+        formatCell(value, data.columns[columnIndex])
+      )).join("\t")),
     ].join("\n");
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -157,7 +170,7 @@ function ResultTable({ data }: { data: TableData }) {
             {data.rows.map((row, rowIndex) => (
               <tr key={rowIndex}>
                 {data.columns.map((column, columnIndex) => (
-                  <td key={`${column}-${columnIndex}`}>{formatCell(row[columnIndex])}</td>
+                  <td key={`${column}-${columnIndex}`}>{formatCell(row[columnIndex], column)}</td>
                 ))}
               </tr>
             ))}

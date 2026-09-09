@@ -173,6 +173,29 @@ input:focus-visible {
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.3);
 }
 
+.auth-back {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 0 12px;
+  color: var(--muted-strong);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--ink-raised);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.auth-back:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--panel-hover);
+}
+
 .auth-mark,
 .user-avatar {
   display: grid;
@@ -1286,6 +1309,14 @@ kbd {
 }
 
 @media (max-width: 620px) {
+  .auth-page {
+    padding: 16px;
+  }
+
+  .auth-card {
+    padding: 28px 24px;
+  }
+
   .topbar {
     height: 61px;
   }
