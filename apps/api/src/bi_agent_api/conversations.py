@@ -58,6 +58,7 @@ class ConversationMessage(BaseModel):
 
 metadata = MetaData()
 identity_type = BigInteger().with_variant(Integer, "sqlite")
+APP_DB_SCHEMA = "biAgent"
 
 conversations = Table(
     "app_conversations",
@@ -66,6 +67,7 @@ conversations = Table(
     Column("title", Unicode(200), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    schema=APP_DB_SCHEMA,
 )
 
 messages = Table(
@@ -75,7 +77,7 @@ messages = Table(
     Column(
         "conversation_id",
         String(36),
-        ForeignKey("app_conversations.conversation_id", ondelete="CASCADE"),
+        ForeignKey(f"{APP_DB_SCHEMA}.app_conversations.conversation_id", ondelete="CASCADE"),
         nullable=False,
     ),
     Column("role", String(16), nullable=False),
@@ -84,6 +86,7 @@ messages = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Index("ix_app_messages_conversation", "conversation_id", "message_id"),
     CheckConstraint("role IN ('user', 'assistant')", name="ck_app_messages_role"),
+    schema=APP_DB_SCHEMA,
 )
 
 audit_turns = Table(
@@ -93,7 +96,7 @@ audit_turns = Table(
     Column(
         "conversation_id",
         String(36),
-        ForeignKey("app_conversations.conversation_id", ondelete="CASCADE"),
+        ForeignKey(f"{APP_DB_SCHEMA}.app_conversations.conversation_id", ondelete="CASCADE"),
         nullable=False,
     ),
     Column("timestamp", DateTime(timezone=True), nullable=False),
@@ -102,6 +105,7 @@ audit_turns = Table(
     Column("success", Boolean, nullable=False),
     Column("error", Unicode(200)),
     Index("ix_app_audit_turns_conversation", "conversation_id", "timestamp"),
+    schema=APP_DB_SCHEMA,
 )
 
 audit_sql_attempts = Table(
@@ -111,7 +115,7 @@ audit_sql_attempts = Table(
     Column(
         "audit_id",
         identity_type,
-        ForeignKey("app_audit_turns.audit_id", ondelete="CASCADE"),
+        ForeignKey(f"{APP_DB_SCHEMA}.app_audit_turns.audit_id", ondelete="CASCADE"),
         nullable=False,
     ),
     Column("attempt_number", Integer, nullable=False),
@@ -123,6 +127,7 @@ audit_sql_attempts = Table(
     Column("success", Boolean, nullable=False),
     Column("error", Unicode(1000)),
     Index("ix_app_audit_sql_attempts_audit", "audit_id", "attempt_number"),
+    schema=APP_DB_SCHEMA,
 )
 
 
@@ -156,6 +161,11 @@ class ConversationStore:
         else:
             odbc_connect = quote_plus(database)
             self.engine = create_engine(f"mssql+pyodbc:///?odbc_connect={odbc_connect}")
+
+        if self.engine.dialect.name == "sqlite":
+            self.engine = self.engine.execution_options(
+                schema_translate_map={APP_DB_SCHEMA: None}
+            )
 
         self.session_db_path = Path(session_db_path or "tmp/bi_agent_sessions.sqlite3")
         self.session_db_path.parent.mkdir(parents=True, exist_ok=True)

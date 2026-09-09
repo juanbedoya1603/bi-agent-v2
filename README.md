@@ -86,12 +86,13 @@ reales de SQL Server ni el guard AST de la aplicación.
 Configura `APP_DB_HOST`, `APP_DB_PORT`, `APP_DB_NAME`, `APP_DB_USER`,
 `APP_DB_PASSWORD` y `APP_DB_DRIVER` con una identidad SQL de lectura/escritura que no
 se reutilice para la base analítica. El esquema reproducible está en
-`apps/api/migrations/001_phase4a_app_db.sql` y crea:
+`apps/api/migrations/001_phase4a_app_db.sql`. La aplicación usa siempre el schema fijo
+`biAgent`, sin depender del schema predeterminado del usuario SQL, y crea:
 
-- `app_conversations`;
-- `app_messages`;
-- `app_audit_turns`;
-- `app_audit_sql_attempts`.
+- `biAgent.app_conversations`;
+- `biAgent.app_messages`;
+- `biAgent.app_audit_turns`;
+- `biAgent.app_audit_sql_attempts`.
 
 La auditoría guarda tiempos, intentos y resultados SQL operativos. No guarda claves,
 contraseñas, cadenas de conexión ni tokens. El endpoint de Excel recibe exclusivamente

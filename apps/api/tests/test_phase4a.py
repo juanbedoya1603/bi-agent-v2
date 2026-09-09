@@ -5,13 +5,16 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.dialects import mssql
+from sqlalchemy.schema import CreateTable
 
 from bi_agent_api.config import Settings
 from bi_agent_api.conversations import (
     ConversationStore,
     audit_sql_attempts,
     audit_turns,
+    conversations,
     get_conversation_store,
     messages,
 )
@@ -45,6 +48,24 @@ def test_app_db_config_is_independent_from_analytics_credentials() -> None:
 def test_app_db_config_reports_missing_values() -> None:
     with pytest.raises(ValueError, match="APP_DB_HOST"):
         Settings(_env_file=None).app_database_connection_string()
+
+
+def test_sql_server_statements_use_explicit_biagent_schema() -> None:
+    dialect = mssql.dialect()
+    app_tables = (conversations, messages, audit_turns, audit_sql_attempts)
+
+    select_statements = [str(select(table).compile(dialect=dialect)) for table in app_tables]
+    insert_sql = str(insert(conversations).compile(dialect=dialect))
+    update_sql = str(update(conversations).compile(dialect=dialect))
+    delete_sql = str(delete(conversations).compile(dialect=dialect))
+    messages_ddl = str(CreateTable(messages).compile(dialect=dialect))
+
+    assert all(table.schema == "biAgent" for table in app_tables)
+    assert all("[biAgent].app_" in statement for statement in select_statements)
+    assert "INSERT INTO [biAgent].app_conversations" in insert_sql
+    assert "UPDATE [biAgent].app_conversations" in update_sql
+    assert "DELETE FROM [biAgent].app_conversations" in delete_sql
+    assert "REFERENCES [biAgent].app_conversations" in messages_ddl
 
 
 def test_persistence_rename_search_audit_and_delete(tmp_path: Path) -> None:
