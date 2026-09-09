@@ -233,9 +233,11 @@ def test_failed_turn_does_not_leave_visible_message(
     assert audit.sql_attempt_count == 0
 
 
+@pytest.mark.parametrize("failed_audit", [False, True], ids=["audit-ok", "audit-fails"])
 def test_app_db_failure_rolls_back_only_current_sdk_session_items(
     tmp_path: Path,
     monkeypatch: Any,
+    failed_audit: bool,
 ) -> None:
     session_db_path = tmp_path / "sessions.sqlite3"
     store = ConversationStore(tmp_path / "app.sqlite3", session_db_path)
@@ -279,6 +281,8 @@ def test_app_db_failure_rolls_back_only_current_sdk_session_items(
     asyncio.run(seed_session())
     monkeypatch.setattr("bi_agent_api.main.answer_question", fake_answer)
     monkeypatch.setattr(store, "add_turn", fail_persistence)
+    if failed_audit:
+        monkeypatch.setattr(store, "add_failed_audit", fail_persistence)
     app.dependency_overrides[get_conversation_store] = lambda: store
     try:
         with TestClient(app) as client:

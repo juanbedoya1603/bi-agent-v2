@@ -33,6 +33,27 @@ def app_db_is_available() -> bool:
 AppDbHealthDependency = Annotated[bool, Depends(app_db_is_available)]
 
 
+def try_add_failed_audit(
+    store: ConversationStore,
+    conversation_id: str,
+    *,
+    started_at: float,
+    context: Any,
+    error: str,
+) -> None:
+    try:
+        store.add_failed_audit(
+            conversation_id,
+            duration_ms=(perf_counter() - started_at) * 1000,
+            sql_history=getattr(context, "sql_history", ()),
+            sql_durations_ms=getattr(context, "sql_durations_ms", ()),
+            error=error,
+        )
+    except Exception:
+        # La auditoría es best-effort y nunca debe ocultar el error original.
+        return
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
 
@@ -242,20 +263,20 @@ async def send_conversation_message(
     except ConversationNotFoundError as error:
         raise HTTPException(status_code=404, detail="La conversación no existe.") from error
     except ValueError as error:
-        store.add_failed_audit(
+        try_add_failed_audit(
+            store,
             conversation_id,
-            duration_ms=(perf_counter() - started_at) * 1000,
-            sql_history=getattr(context, "sql_history", ()),
-            sql_durations_ms=getattr(context, "sql_durations_ms", ()),
+            started_at=started_at,
+            context=context,
             error="configuration_error",
         )
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:
-        store.add_failed_audit(
+        try_add_failed_audit(
+            store,
             conversation_id,
-            duration_ms=(perf_counter() - started_at) * 1000,
-            sql_history=getattr(context, "sql_history", ()),
-            sql_durations_ms=getattr(context, "sql_durations_ms", ()),
+            started_at=started_at,
+            context=context,
             error="agent_error",
         )
         raise HTTPException(
