@@ -4,9 +4,12 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, select, update
+from sqlalchemy.dialects import mssql
 
 from bi_agent_api.auth import (
     AuthStore,
+    _active_admin_count_query,
+    _active_session_user_query,
     get_auth_store,
     user_sessions,
     users,
@@ -36,6 +39,22 @@ def login(client: TestClient, username: str, password: str) -> Any:
     return client.post(
         "/api/v1/auth/login", json={"username": username, "password": password}
     )
+
+
+def test_boolean_filters_compile_for_sql_server() -> None:
+    dialect = mssql.dialect()
+    timestamp = datetime.now(UTC)
+    statements = (
+        _active_session_user_query("a" * 64, timestamp),
+        _active_admin_count_query(),
+    )
+
+    compiled = "\n".join(str(statement.compile(dialect=dialect)) for statement in statements)
+
+    assert " IS 1" not in compiled
+    assert " IS 0" not in compiled
+    assert "[biAgent].app_users.is_active = 1" in compiled
+    assert "[biAgent].app_users.is_admin = 1" in compiled
 
 
 def test_argon2_login_cookie_logout_and_no_plaintext(tmp_path: Path) -> None:

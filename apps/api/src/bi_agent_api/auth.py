@@ -20,6 +20,7 @@ from sqlalchemy import (
     func,
     insert,
     select,
+    true,
     update,
 )
 from sqlalchemy.engine import Engine
@@ -136,6 +137,27 @@ def _aware(value: datetime) -> datetime:
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _active_session_user_query(token_hash: str, timestamp: datetime) -> Any:
+    return (
+        select(users)
+        .join(user_sessions, user_sessions.c.user_id == users.c.user_id)
+        .where(
+            user_sessions.c.session_token_hash == token_hash,
+            user_sessions.c.revoked_at.is_(None),
+            user_sessions.c.expires_at > timestamp,
+            users.c.is_active == true(),
+        )
+    )
+
+
+def _active_admin_count_query() -> Any:
+    return (
+        select(func.count())
+        .select_from(users)
+        .where(users.c.is_admin == true(), users.c.is_active == true())
+    )
 
 
 class AuthStore:
@@ -271,14 +293,7 @@ class AuthStore:
         timestamp = _now()
         with self.engine.begin() as connection:
             row = connection.execute(
-                select(users)
-                .join(user_sessions, user_sessions.c.user_id == users.c.user_id)
-                .where(
-                    user_sessions.c.session_token_hash == _token_hash(token),
-                    user_sessions.c.revoked_at.is_(None),
-                    user_sessions.c.expires_at > timestamp,
-                    users.c.is_active.is_(True),
-                )
+                _active_session_user_query(_token_hash(token), timestamp)
             ).first()
             if row:
                 connection.execute(
@@ -359,11 +374,7 @@ class AuthStore:
             if row is None:
                 raise UserNotFoundError(user_id)
             if not active and row.is_admin and row.is_active:
-                active_admins = connection.scalar(
-                    select(func.count()).select_from(users).where(
-                        users.c.is_admin.is_(True), users.c.is_active.is_(True)
-                    )
-                )
+                active_admins = connection.scalar(_active_admin_count_query())
                 if active_admins <= 1:
                     raise LastAdminError("Debe existir al menos un administrador activo.")
             connection.execute(
