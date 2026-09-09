@@ -1,8 +1,11 @@
+import asyncio
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from agents import SQLiteSession
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 from sqlalchemy import delete, func, insert, select, update
@@ -48,6 +51,12 @@ def test_app_db_config_is_independent_from_analytics_credentials() -> None:
 def test_app_db_config_reports_missing_values() -> None:
     with pytest.raises(ValueError, match="APP_DB_HOST"):
         Settings(_env_file=None).app_database_connection_string()
+
+
+def test_app_db_healthcheck_executes_select_one(tmp_path: Path) -> None:
+    store = ConversationStore(tmp_path / "app.sqlite3", tmp_path / "sessions.sqlite3")
+
+    store.check_app_db()
 
 
 def test_sql_server_statements_use_explicit_biagent_schema() -> None:
@@ -116,6 +125,30 @@ def test_persistence_rename_search_audit_and_delete(tmp_path: Path) -> None:
         assert connection.scalar(select(func.count()).select_from(messages)) == 0
         assert connection.scalar(select(func.count()).select_from(audit_turns)) == 0
         assert connection.scalar(select(func.count()).select_from(audit_sql_attempts)) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_clears_only_matching_sdk_session(tmp_path: Path) -> None:
+    app_db_path = tmp_path / "app.sqlite3"
+    session_db_path = tmp_path / "sessions.sqlite3"
+    store = ConversationStore(app_db_path, session_db_path)
+    first = store.create_conversation()
+    second = store.create_conversation()
+    first_session = SQLiteSession(first.conversation_id, session_db_path)
+    second_session = SQLiteSession(second.conversation_id, session_db_path)
+    await first_session.add_items([{"role": "user", "content": "Primera"}])
+    await second_session.add_items([{"role": "user", "content": "Segunda"}])
+    first_session.close()
+    second_session.close()
+
+    await store.delete_conversation_with_session(first.conversation_id)
+
+    deleted_session = SQLiteSession(first.conversation_id, session_db_path)
+    retained_session = SQLiteSession(second.conversation_id, session_db_path)
+    assert await deleted_session.get_items() == []
+    assert await retained_session.get_items() == [{"role": "user", "content": "Segunda"}]
+    deleted_session.close()
+    retained_session.close()
 
 
 def test_new_conversation_endpoints_and_excel_export(
@@ -198,6 +231,73 @@ def test_failed_turn_does_not_leave_visible_message(
     assert audit.success is False
     assert audit.error == "agent_error"
     assert audit.sql_attempt_count == 0
+
+
+def test_app_db_failure_rolls_back_only_current_sdk_session_items(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    session_db_path = tmp_path / "sessions.sqlite3"
+    store = ConversationStore(tmp_path / "app.sqlite3", session_db_path)
+    conversation = store.create_conversation()
+    previous_items = [
+        {"role": "user", "content": "Pregunta anterior"},
+        {
+            "role": "assistant",
+            "type": "message",
+            "status": "completed",
+            "content": [{"type": "output_text", "text": "Respuesta anterior"}],
+        },
+    ]
+
+    async def seed_session() -> None:
+        session = SQLiteSession(conversation.conversation_id, session_db_path)
+        await session.add_items(previous_items)
+        session.close()
+
+    async def fake_answer(_: str, __: Any, **kwargs: Any) -> tuple[str, Any]:
+        await kwargs["session"].add_items(
+            [
+                {"role": "user", "content": "Pregunta nueva"},
+                {
+                    "role": "assistant",
+                    "type": "message",
+                    "status": "completed",
+                    "content": [{"type": "output_text", "text": "Respuesta nueva"}],
+                },
+            ]
+        )
+        return "Respuesta nueva", SimpleNamespace(
+            latest_result=None,
+            sql_history=[],
+            sql_durations_ms=[],
+        )
+
+    def fail_persistence(*_: Any, **__: Any) -> None:
+        raise RuntimeError("App DB write failed")
+
+    asyncio.run(seed_session())
+    monkeypatch.setattr("bi_agent_api.main.answer_question", fake_answer)
+    monkeypatch.setattr(store, "add_turn", fail_persistence)
+    app.dependency_overrides[get_conversation_store] = lambda: store
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/v1/conversations/{conversation.conversation_id}/messages",
+                json={"message": "Pregunta nueva"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    async def read_session() -> list[Any]:
+        session = SQLiteSession(conversation.conversation_id, session_db_path)
+        items = await session.get_items()
+        session.close()
+        return items
+
+    assert response.status_code == 502
+    assert asyncio.run(read_session()) == previous_items
+    assert store.get_messages(conversation.conversation_id) == []
 
 
 def test_excel_rejects_more_than_visible_limit() -> None:

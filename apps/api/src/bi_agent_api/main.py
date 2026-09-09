@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .agent import answer_question
@@ -20,6 +20,17 @@ from .conversations import (
 from .excel_export import build_excel
 
 ConversationStoreDependency = Annotated[ConversationStore, Depends(get_conversation_store)]
+
+
+def app_db_is_available() -> bool:
+    try:
+        get_conversation_store().check_app_db()
+    except Exception:
+        return False
+    return True
+
+
+AppDbHealthDependency = Annotated[bool, Depends(app_db_is_available)]
 
 
 class ChatRequest(BaseModel):
@@ -85,9 +96,11 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+@app.get("/health", responses={503: {"description": "App DB no disponible"}})
+async def health(app_db_available: AppDbHealthDependency) -> JSONResponse:
+    if not app_db_available:
+        return JSONResponse(status_code=503, content={"status": "degraded"})
+    return JSONResponse(content={"status": "ok"})
 
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
@@ -140,7 +153,7 @@ async def delete_conversation(
     store: ConversationStoreDependency,
 ) -> Response:
     try:
-        store.delete_conversation(conversation_id)
+        await store.delete_conversation_with_session(conversation_id)
     except ConversationNotFoundError as error:
         raise HTTPException(status_code=404, detail="La conversación no existe.") from error
     return Response(status_code=204)
@@ -190,35 +203,42 @@ async def send_conversation_message(
         async with conversation_lock:
             session = store.sdk_session(conversation_id)
             try:
+                session_item_count = len(await session.get_items())
                 answer, context = await answer_question(
                     request.message,
                     get_settings(),
                     session=session,
                 )
+                data = (
+                    context.latest_result
+                    if context.latest_result and context.latest_result.get("ok")
+                    else None
+                )
+                duration_ms = (perf_counter() - started_at) * 1000
+                latest_error = (
+                    (context.latest_result.get("error") or {}).get("type")
+                    if context.latest_result and not context.latest_result.get("ok")
+                    else None
+                )
+                try:
+                    user_message, message = store.add_turn(
+                        conversation_id,
+                        request.message,
+                        answer,
+                        data,
+                        duration_ms=duration_ms,
+                        sql_history=getattr(context, "sql_history", ()),
+                        sql_durations_ms=getattr(context, "sql_durations_ms", ()),
+                        audit_success=latest_error is None,
+                        audit_error=latest_error,
+                    )
+                except Exception:
+                    items_added = max(0, len(await session.get_items()) - session_item_count)
+                    for _ in range(items_added):
+                        await session.pop_item()
+                    raise
             finally:
                 session.close()
-            data = (
-                context.latest_result
-                if context.latest_result and context.latest_result.get("ok")
-                else None
-            )
-            duration_ms = (perf_counter() - started_at) * 1000
-            latest_error = (
-                (context.latest_result.get("error") or {}).get("type")
-                if context.latest_result and not context.latest_result.get("ok")
-                else None
-            )
-            user_message, message = store.add_turn(
-                conversation_id,
-                request.message,
-                answer,
-                data,
-                duration_ms=duration_ms,
-                sql_history=getattr(context, "sql_history", ()),
-                sql_durations_ms=getattr(context, "sql_durations_ms", ()),
-                audit_success=latest_error is None,
-                audit_error=latest_error,
-            )
     except ConversationNotFoundError as error:
         raise HTTPException(status_code=404, detail="La conversación no existe.") from error
     except ValueError as error:

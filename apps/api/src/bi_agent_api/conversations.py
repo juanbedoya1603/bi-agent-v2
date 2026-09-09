@@ -30,6 +30,7 @@ from sqlalchemy import (
     func,
     insert,
     select,
+    text,
     update,
 )
 from sqlalchemy.engine import Engine
@@ -277,6 +278,18 @@ class ConversationStore:
                 delete(conversations).where(conversations.c.conversation_id == conversation_id)
             )
         self._conversation_locks.pop(conversation_id, None)
+
+    async def delete_conversation_with_session(self, conversation_id: str) -> None:
+        self.delete_conversation(conversation_id)
+        session = SQLiteSession(conversation_id, self.session_db_path)
+        try:
+            await session.clear_session()
+        finally:
+            session.close()
+
+    def check_app_db(self) -> None:
+        with self.engine.connect() as connection:
+            connection.execute(text("SELECT 1")).scalar_one()
 
     def add_turn(
         self,
