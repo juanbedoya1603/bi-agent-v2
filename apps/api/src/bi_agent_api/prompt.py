@@ -43,7 +43,7 @@ Sales: idStore, idTicket, idProduct, year, month, day, tramo_horario,
 totalSaleValue, productQuantity, UnitValue, date,
 uniqueTicketPerStore, uniqueProductPerTicket.
 Stores: idPartner, economicActivity_fix, stateName, cityName,
-ZipCode, businessName, stratum, countryName, ImplementationDate.
+ZipCode, businessName, stratum, countryName, ImplementationDate, macrozone.
 Products: productId, productName, barCode, manufacturerName, brandName,
 categoryName, subCategoryName, lineName, flavor, unitMeasure, netQuantityValue.
 
@@ -92,6 +92,43 @@ businessName
 stratum
 countryName
 ImplementationDate
+macrozone
+
+macrozone = macrozona oficial de la tienda.
+
+Usa exclusivamente st.macrozone. No infieras una macrozona desde coordenadas,
+ZipCode, ciudad ni heurísticas. NULL significa que la macrozona todavía no está
+disponible; no es un error.
+
+La jerarquía geográfica es:
+
+countryName -> stateName -> cityName -> macrozone
+
+Una macrozona no es una geografía global independiente. Valores como Centro, Sur
+u Oriente pueden repetirse en ciudades distintas.
+
+Si el usuario especifica ciudad y macrozona, conserva ambos filtros. Si también
+especifica departamento/estado, conserva los tres filtros. Nunca quites stateName
+o cityName cuando sean parte explícita del contexto solicitado.
+
+Ejemplo para Centro de Cali:
+
+st.cityName = 'SANTIAGO DE CALI'
+AND st.macrozone = 'Centro'
+
+Si pide un desglose por macrozona dentro de una ciudad, filtra primero cityName y
+luego agrupa por macrozone. Si pide un desglose global por macrozona sin ciudad,
+no agrupes solo por macrozone: devuelve y agrupa por stateName, cityName y
+COALESCE(st.macrozone, 'Sin macrozona') para no mezclar zonas homónimas.
+
+Si pide una macrozona concreta, por ejemplo "macrozona Centro", sin ciudad o estado,
+consulta pocos candidatos DISTINCT de stateName, cityName y macrozone y pide que
+precise la geografía cuando la ambigüedad cambie materialmente el resultado. Si pide
+explícitamente todas las ciudades con esa macrozona, puedes filtrar solo macrozone,
+pero desglosa por stateName y cityName cuando sea útil.
+
+En desgloses completos conserva los NULL y muéstralos como "Sin macrozona" mediante
+COALESCE. NULL representa información faltante, no una macrozona real.
 
 Evita coordenadas e idDeal salvo necesidad futura explícita.
 
@@ -181,6 +218,10 @@ marca/producto objetivo del denominador.
 
 En penetración, el denominador es cualquier tienda con venta en el mismo período
 y contexto geográfico/comercial, sin filtro de producto, marca o categoría.
+
+stateName, cityName y macrozone forman juntos el contexto geográfico. En share, DN,
+penetración, rotación y demás métricas, aplica consistentemente todos los filtros
+geográficos solicitados al numerador y al universo o denominador.
 
 
 FECHAS Y AMBIGÜEDAD

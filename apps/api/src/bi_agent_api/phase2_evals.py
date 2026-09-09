@@ -36,8 +36,8 @@ class SyntheticSqlExecutor:
 
 def load_cases(path: Path) -> list[dict[str, Any]]:
     cases = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(cases, list) or not 12 <= len(cases) <= 25:
-        raise ValueError("El dataset debe contener entre 12 y 25 casos.")
+    if not isinstance(cases, list) or not 12 <= len(cases) <= 35:
+        raise ValueError("El dataset debe contener entre 12 y 35 casos.")
     ids = [case.get("id") for case in cases]
     if any(not case_id for case_id in ids) or len(ids) != len(set(ids)):
         raise ValueError("Cada caso debe tener un id único y no vacío.")
@@ -211,6 +211,17 @@ def _semantic_check(
         pattern = rf"{causal}.{{0,60}}{external}|{external}.{{0,60}}{causal}"
         invented = re.search(pattern, answer.casefold())
         return not invented, "no debe atribuir causalidad a factores externos no observables"
+
+    if check_type == "geographic_context":
+        required = [
+            _compact(_canonical_sql(item)) for item in specification["filters"]
+        ]
+        for statement in statements:
+            for where in statement.find_all(exp.Where):
+                where_sql = _compact(_canonical_sql(where.sql(dialect="tsql")))
+                if all(item in where_sql for item in required):
+                    return True, "contexto geográfico completo aplicado en un WHERE común"
+        return False, "stateName, cityName y macrozone no aparecen juntos en un WHERE común"
 
     return False, f"check semántico desconocido: {check_type}"
 

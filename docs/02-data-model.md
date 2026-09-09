@@ -41,6 +41,7 @@ stratum
 countryName
 ImplementationDate
 idDeal
+macrozone
 ```
 
 Usar normalmente:
@@ -48,11 +49,19 @@ Usar normalmente:
 - `economicActivity_fix`: tipología/actividad del negocio;
 - `stateName`;
 - `cityName`;
+- `macrozone`: macrozona oficial de la tienda;
 - `stratum`;
 - `countryName`;
 - `ImplementationDate`.
 
 Evitar usar coordenadas exactas salvo necesidad explícita.
+
+La jerarquía geográfica es `countryName -> stateName -> cityName -> macrozone`.
+`macrozone` no es una geografía global independiente: nombres como `Centro` pueden
+repetirse en distintas ciudades. Debe usarse exclusivamente el valor almacenado en
+`st.macrozone`, sin inferirlo desde coordenadas, código postal, ciudad o heurísticas.
+Un valor `NULL` significa que la tienda aún no tiene macrozona disponible; no es un
+error ni una macrozona real.
 
 ## `dbo.VW_Products`
 

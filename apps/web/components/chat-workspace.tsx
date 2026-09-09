@@ -99,7 +99,9 @@ const columnLabels: Record<string, string> = {
   productName: "Producto",
   brandName: "Marca",
   categoryName: "Categoría",
+  stateName: "Departamento/Estado",
   cityName: "Ciudad",
+  macrozone: "Macrozona",
   tickets: "Tickets",
   stores: "Tiendas",
 };

@@ -158,5 +158,47 @@
     "prompt": "Ventas de una marca inexistente en Bogotá en agosto de 2026.",
     "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "contains": ["SUM(totalSaleValue)", "brandName", "cityName='BOGOTA'"], "answer_contains_any": [["no se encontraron", "sin datos", "no hay datos"]], "answer_not_contains": ["$0", "ventas fueron 0", "ventas fueron de 0"]},
     "fake_results": [{"columns": ["sales"], "rows": [[null]]}]
+  },
+  {
+    "id": "sales_by_macrozone_bogota",
+    "critical": true,
+    "prompt": "Ventas por macrozona en Bogotá en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "cityName='BOGOTA'", "macrozone", "GROUP BY", "COALESCE", "Sin macrozona"], "answer_contains": ["Centro"], "answer_contains_any": [["600.001", "600,001", "600001"]]},
+    "fake_results": [{"columns": ["macrozone", "sales"], "rows": [["Centro", 600001], ["Sur", 400002], ["Sin macrozona", 100003]]}]
+  },
+  {
+    "id": "compare_macrozones_bogota",
+    "prompt": "Compara ventas de Centro vs Sur dentro de Bogotá en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "cityName='BOGOTA'", "macrozone", "CENTRO", "SUR", "GROUP BY"], "answer_contains": ["Centro", "Sur"], "answer_contains_any": [["600.001", "600,001", "600001"]]},
+    "fake_results": [{"columns": ["macrozone", "sales"], "rows": [["Centro", 600001], ["Sur", 400002]]}]
+  },
+  {
+    "id": "global_sales_by_macrozone",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "Ventas por macrozona en todo el país en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "stateName", "cityName", "macrozone", "COALESCE", "Sin macrozona", "GROUP BY"], "answer_contains": ["BOGOTA", "SANTIAGO DE CALI", "Centro"]},
+    "fake_results": [{"columns": ["stateName", "cityName", "macrozone", "sales"], "rows": [["BOGOTA D.C.", "BOGOTA", "Centro", 600001], ["VALLE DEL CAUCA", "SANTIAGO DE CALI", "Centro", 300002], ["RISARALDA", "PEREIRA", "Sin macrozona", 100003]]}]
+  },
+  {
+    "id": "penetration_macrozone_full_context",
+    "critical": true,
+    "manual_review_required": true,
+    "prompt": "¿Cuál fue la penetración de Colgate en la macrozona Centro de Santiago de Cali, Valle del Cauca, en agosto de 2026?",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Products", "VW_Stores"], "contains": ["COUNT(DISTINCT", "brandName", "COLGATE", "stateName='VALLE DEL CAUCA'", "cityName='SANTIAGO DE CALI'", "macrozone='Centro'", "NULLIF"], "answer_contains_any": [["25%", "25 %", "25,0%", "0,25", "0.25"]], "semantic_checks": [{"type": "penetration", "target": "COLGATE"}, {"type": "geographic_context", "filters": ["stateName='VALLE DEL CAUCA'", "cityName='SANTIAGO DE CALI'", "macrozone='Centro'"]}]},
+    "fake_results": [{"columns": ["penetration", "stores_with_brand", "stores_active"], "rows": [[0.25, 25, 100]]}]
+  },
+  {
+    "id": "macrozone_null_label",
+    "prompt": "Muéstrame el desglose completo de ventas por macrozona en Pereira en agosto de 2026, incluyendo tiendas sin macrozona.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_SalesLast13Months", "VW_Stores"], "contains": ["SUM(totalSaleValue)", "cityName='PEREIRA'", "COALESCE", "macrozone", "Sin macrozona", "GROUP BY"], "answer_contains": ["Sin macrozona"], "answer_contains_any": [["100.003", "100,003", "100003"]]},
+    "fake_results": [{"columns": ["macrozone", "sales"], "rows": [["Centro", 300002], ["Sin macrozona", 100003]]}]
+  },
+  {
+    "id": "ambiguous_macrozone_without_geography",
+    "critical": true,
+    "prompt": "Ventas en la macrozona Centro en agosto de 2026.",
+    "expected": {"sql_calls_min": 1, "sql_calls_max": 1, "views": ["VW_Stores"], "contains": ["TOP", "DISTINCT", "stateName", "cityName", "macrozone", "macrozone='Centro'"], "not_contains": ["SUM(totalSaleValue)"], "answer_contains": ["BOGOTA", "SANTIAGO DE CALI"], "answer_contains_any": [["ciudad", "geografía", "ubicación"], ["precis", "aclar", "cuál"]]},
+    "fake_results": [{"columns": ["stateName", "cityName", "macrozone"], "rows": [["BOGOTA D.C.", "BOGOTA", "Centro"], ["VALLE DEL CAUCA", "SANTIAGO DE CALI", "Centro"]]}]
   }
 ]

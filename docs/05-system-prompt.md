@@ -41,8 +41,26 @@ Sales: totalSaleValue, productQuantity, uniqueTicketPerStore, date
 Products: productId, productName, barCode, manufacturerName, brandName,
           categoryName, subCategoryName, lineName, flavor,
           unitMeasure, netQuantityValue
-Stores: economicActivity_fix, stateName, cityName, stratum, countryName
+Stores: economicActivity_fix, stateName, cityName, macrozone, stratum, countryName
 ```
+
+### Geografía y macrozonas
+
+La jerarquía es `countryName -> stateName -> cityName -> macrozone`. Usa solamente
+`st.macrozone`; no la infieras desde coordenadas, `ZipCode`, ciudad ni heurísticas.
+`NULL` significa macrozona no disponible.
+
+- ciudad + macrozona: conserva ambos filtros;
+- estado/departamento + ciudad + macrozona: conserva los tres filtros;
+- desglose global: agrupa por `stateName`, `cityName` y `macrozone`, nunca solo por
+  `macrozone`, porque nombres como `Centro` pueden repetirse;
+- desglose completo: usa `COALESCE(st.macrozone, 'Sin macrozona')` y no descartes
+  silenciosamente los `NULL`;
+- una macrozona concreta sin ciudad/estado es ambigua: consulta pocos candidatos
+  `DISTINCT` y pide precisar la geografía si cambia materialmente el resultado.
+
+En share, DN, penetración, rotación y otras métricas, aplica `stateName`, `cityName`
+y `macrozone` consistentemente al numerador y al denominador/universo.
 
 ## Métricas
 

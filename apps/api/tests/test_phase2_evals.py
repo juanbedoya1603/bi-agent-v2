@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_loads_phase2_dataset() -> None:
     cases = load_cases(ROOT / "evals" / "cases.json")
 
-    assert len(cases) == 24
-    assert len({case["id"] for case in cases}) == 24
+    assert len(cases) == 30
+    assert len({case["id"] for case in cases}) == 30
 
 
 def test_loads_holdout_dataset() -> None:
@@ -232,3 +232,34 @@ def test_regression_no_data_uses_null_aggregate() -> None:
     case = next(item for item in cases if item["id"] == "no_matching_rows")
 
     assert case["fake_results"][0]["rows"] == [[None]]
+
+
+def test_geographic_context_requires_all_filters_in_same_where() -> None:
+    case = {
+        "id": "macrozone_penetration",
+        "prompt": "penetration",
+        "expected": {
+            "sql_calls_min": 1,
+            "semantic_checks": [
+                {
+                    "type": "geographic_context",
+                    "filters": [
+                        "stateName='VALLE DEL CAUCA'",
+                        "cityName='SANTIAGO DE CALI'",
+                        "macrozone='Centro'",
+                    ],
+                }
+            ],
+        },
+    }
+    sql = """SELECT COUNT(DISTINCT s.idStore)
+    FROM dbo.VW_SalesLast13Months s
+    JOIN dbo.VW_Stores st ON st.idPartner=s.idStore
+    WHERE st.stateName='VALLE DEL CAUCA'
+      AND st.cityName='SANTIAGO DE CALI'
+      AND st.macrozone='Centro'"""
+
+    assert score_case(case, "25%", _history(sql), [])["passed"] is True
+
+    incomplete_sql = sql.replace("AND st.macrozone='Centro'", "")
+    assert score_case(case, "25%", _history(incomplete_sql), [])["passed"] is False

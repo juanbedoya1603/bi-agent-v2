@@ -132,3 +132,33 @@ SELECT
     / NULLIF(MAX(CASE WHEN period = 'previous' THEN sales END), 0) - 1 AS mom_growth
 FROM monthly;
 ```
+
+## 7. Ventas por macrozona dentro de una ciudad
+
+```sql
+SELECT
+    COALESCE(st.macrozone, 'Sin macrozona') AS macrozone,
+    SUM(s.totalSaleValue) AS sales
+FROM dbo.VW_SalesLast13Months s
+JOIN dbo.VW_Stores st ON st.idPartner = s.idStore
+WHERE st.cityName = 'BOGOTA'
+GROUP BY COALESCE(st.macrozone, 'Sin macrozona')
+ORDER BY sales DESC;
+```
+
+## 8. Ventas por macrozona globales sin mezclar zonas homónimas
+
+```sql
+SELECT
+    st.stateName,
+    st.cityName,
+    COALESCE(st.macrozone, 'Sin macrozona') AS macrozone,
+    SUM(s.totalSaleValue) AS sales
+FROM dbo.VW_SalesLast13Months s
+JOIN dbo.VW_Stores st ON st.idPartner = s.idStore
+GROUP BY
+    st.stateName,
+    st.cityName,
+    COALESCE(st.macrozone, 'Sin macrozona')
+ORDER BY st.stateName, st.cityName, macrozone;
+```
