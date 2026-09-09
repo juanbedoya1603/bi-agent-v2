@@ -2,6 +2,7 @@ import asyncio
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any
 
 from agents import RunContextWrapper, function_tool
@@ -19,6 +20,7 @@ class BiAgentContext:
     sql_attempts: int = 0
     latest_result: dict[str, Any] | None = field(default=None)
     sql_history: list[dict[str, Any]] = field(default_factory=list)
+    sql_durations_ms: list[float] = field(default_factory=list)
 
 
 def _safe_error_message(error: Exception, settings: Settings) -> str:
@@ -39,6 +41,7 @@ def _safe_error_message(error: Exception, settings: Settings) -> str:
 async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str) -> dict[str, Any]:
     """Ejecuta una consulta T-SQL de solo lectura sobre las tres views autorizadas."""
     context = wrapper.context
+    started_at = perf_counter()
     context.sql_attempts += 1
     history_entry: dict[str, Any] = {"sql": sql, "guard_passed": False, "result": None}
     context.sql_history.append(history_entry)
@@ -52,6 +55,7 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
         }
         history_entry["result"] = result
         context.latest_result = result
+        context.sql_durations_ms.append((perf_counter() - started_at) * 1000)
         return result
 
     try:
@@ -63,6 +67,7 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
         }
         history_entry["result"] = result
         context.latest_result = result
+        context.sql_durations_ms.append((perf_counter() - started_at) * 1000)
         return result
 
     history_entry["guard_passed"] = True
@@ -78,6 +83,7 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
         }
     history_entry["result"] = result
     context.latest_result = result
+    context.sql_durations_ms.append((perf_counter() - started_at) * 1000)
     return result
 
 

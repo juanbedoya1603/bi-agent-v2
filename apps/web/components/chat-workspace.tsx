@@ -9,18 +9,24 @@ import {
   ChevronRight,
   Clock3,
   Copy,
+  Download,
   History,
   Menu,
   MessageSquareText,
   PackageSearch,
+  Pencil,
   Plus,
   RefreshCw,
   Scale,
+  Search,
   Send,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { api, Conversation, Message, TableData } from "@/lib/api";
 
@@ -92,6 +98,8 @@ function formatColumn(column: string) {
 
 function ResultTable({ data }: { data: TableData }) {
   const [copied, setCopied] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState(false);
 
   async function copyTable() {
     const text = [
@@ -103,14 +111,37 @@ function ResultTable({ data }: { data: TableData }) {
     window.setTimeout(() => setCopied(false), 1600);
   }
 
+  async function exportExcel() {
+    setIsExporting(true);
+    setExportError(false);
+    try {
+      const blob = await api.exportExcel(data);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "datos-bi.xlsx";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError(true);
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section className="result-card" aria-label="Resultado tabular">
       <div className="result-meta">
         <span>{data.row_count} {data.row_count === 1 ? "fila" : "filas"}</span>
         {data.truncated && <span className="truncated-note">Vista limitada</span>}
+        {exportError && <span className="export-error">No se pudo exportar</span>}
         <button className="copy-button" type="button" onClick={copyTable}>
           {copied ? <Check size={14} /> : <Copy size={14} />}
           {copied ? "Copiada" : "Copiar tabla"}
+        </button>
+        <button className="copy-button export-button" type="button" onClick={exportExcel} disabled={isExporting}>
+          <Download size={14} />
+          {isExporting ? "Exportando" : "Exportar Excel"}
         </button>
       </div>
       <div className="table-scroll">
@@ -135,6 +166,53 @@ function ResultTable({ data }: { data: TableData }) {
   );
 }
 
+function CodeBlock({ code, language }: { code: string; language: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyCode() {
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  return (
+    <div className="code-block">
+      <div className="code-heading">
+        <span>{language || "código"}</span>
+        <button type="button" onClick={copyCode}>
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          {copied ? "Copiado" : "Copiar código"}
+        </button>
+      </div>
+      <pre><code>{code}</code></pre>
+    </div>
+  );
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <div className="message-copy markdown-copy">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          pre: ({ children }) => <>{children}</>,
+          code: ({ className, children, ...props }) => {
+            const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
+            const code = String(children).replace(/\n$/, "");
+            return language ? (
+              <CodeBlock code={code} language={language} />
+            ) : (
+              <code className={`inline-code ${className ?? ""}`} {...props}>{children}</code>
+            );
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 function AssistantMessage({ message }: { message: Message }) {
   const [copied, setCopied] = useState(false);
   const tableData = message.data;
@@ -155,7 +233,7 @@ function AssistantMessage({ message }: { message: Message }) {
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
         </div>
-        <p className="message-copy">{message.content}</p>
+        <MarkdownMessage content={message.content} />
         {tableData && tableData.columns.length > 0 && <ResultTable data={tableData} />}
       </div>
     </article>
@@ -204,20 +282,41 @@ export function ChatWorkspace() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isBooting, setIsBooting] = useState(true);
+  const [backendStatus, setBackendStatus] = useState<"connecting" | "ready" | "offline">("connecting");
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  async function refreshConversations() {
-    const items = await api.listConversations();
+  async function refreshConversations(search = searchTerm) {
+    const items = await api.listConversations(search);
     setConversations(items);
   }
 
   useEffect(() => {
+    const checkBackend = () => {
+      api.health()
+        .then(() => setBackendStatus("ready"))
+        .catch(() => setBackendStatus("offline"));
+    };
+    checkBackend();
+    const healthInterval = window.setInterval(checkBackend, 30000);
     api.listConversations()
       .then(setConversations)
       .catch(() => setError("No pudimos cargar el historial. Puedes iniciar una conversación nueva."))
       .finally(() => setIsBooting(false));
+    return () => window.clearInterval(healthInterval);
   }, []);
+
+  useEffect(() => {
+    if (isBooting) return;
+    const timeout = window.setTimeout(() => {
+      api.listConversations(searchTerm)
+        .then(setConversations)
+        .catch(() => setError("No pudimos buscar en el historial."));
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [searchTerm, isBooting]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -263,31 +362,68 @@ export function ChatWorkspace() {
     setIsSending(true);
     setError(null);
     setInput("");
-    const optimisticMessage: Message = {
-      message_id: -Date.now(),
-      role: "user",
-      content,
-      data: null,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((current) => [...current, optimisticMessage]);
+    setPendingMessage(content);
+    let createdConversationId: string | null = null;
 
     try {
       let conversationId = activeConversationId;
       if (!conversationId) {
         const conversation = await api.createConversation();
         conversationId = conversation.conversation_id;
+        createdConversationId = conversationId;
         setActiveConversationId(conversationId);
         setConversations((current) => [conversation, ...current]);
       }
       const response = await api.sendMessage(conversationId, content);
-      setMessages((current) => [...current, response.message]);
+      setMessages((current) => [...current, response.user_message, response.message]);
+      setBackendStatus("ready");
       await refreshConversations();
     } catch (requestError) {
+      if (createdConversationId) {
+        try {
+          await api.deleteConversation(createdConversationId);
+          setConversations((current) => current.filter(
+            (item) => item.conversation_id !== createdConversationId,
+          ));
+          setActiveConversationId(null);
+        } catch {
+          // The original request error remains the useful message for the user.
+        }
+      }
       setError(requestError instanceof Error ? requestError.message : "La consulta no pudo completarse.");
     } finally {
+      setPendingMessage(null);
       setIsSending(false);
       textareaRef.current?.focus();
+    }
+  }
+
+  async function renameConversation(conversation: Conversation) {
+    const title = window.prompt("Nuevo nombre de la conversación", conversation.title)?.trim();
+    if (!title || title === conversation.title) return;
+    try {
+      const updated = await api.renameConversation(conversation.conversation_id, title);
+      setConversations((current) => current.map((item) => (
+        item.conversation_id === updated.conversation_id ? updated : item
+      )));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "No pudimos renombrar la conversación.");
+    }
+  }
+
+  async function deleteConversation(conversation: Conversation) {
+    if (!window.confirm(`¿Eliminar "${conversation.title}" y todo su historial?`)) return;
+    try {
+      await api.deleteConversation(conversation.conversation_id);
+      setConversations((current) => current.filter(
+        (item) => item.conversation_id !== conversation.conversation_id,
+      ));
+      if (activeConversationId === conversation.conversation_id) {
+        setActiveConversationId(null);
+        setMessages([]);
+      }
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "No pudimos eliminar la conversación.");
     }
   }
 
@@ -313,7 +449,9 @@ export function ChatWorkspace() {
           <p className="active-title" title={activeTitle}>{activeTitle}</p>
         )}
         <div className="top-actions">
-          <span className="ready-state"><i /> Listo</span>
+          <span className={`ready-state ready-state-${backendStatus}`}>
+            <i /> {backendStatus === "connecting" ? "Conectando" : backendStatus === "ready" ? "Listo" : "Sin conexión"}
+          </span>
           <button className="header-button history-button" type="button" onClick={() => setIsHistoryOpen(true)}>
             <History size={16} /><span>Historial</span>
           </button>
@@ -327,8 +465,8 @@ export function ChatWorkspace() {
       </header>
 
       <div className="workspace-grid" aria-hidden="true" />
-      <section className={`conversation ${messages.length === 0 ? "conversation-empty" : ""}`}>
-        {messages.length === 0 ? (
+      <section className={`conversation ${messages.length === 0 && !pendingMessage ? "conversation-empty" : ""}`}>
+        {messages.length === 0 && !pendingMessage ? (
           <Welcome onQuery={(prompt) => void sendMessage(prompt)} disabled={isSending || isBooting} />
         ) : (
           <div className="message-list" aria-live="polite">
@@ -337,6 +475,11 @@ export function ChatWorkspace() {
                 <div className="message-main"><p className="message-copy">{message.content}</p></div>
               </article>
             ) : <AssistantMessage message={message} key={message.message_id} />)}
+            {pendingMessage && (
+              <article className="message user-message pending-user-message">
+                <div className="message-main"><p className="message-copy">{pendingMessage}</p></div>
+              </article>
+            )}
             {isSending && (
               <article className="message assistant-message loading-message" aria-label="BI Agent está analizando">
                 <div className="message-avatar"><Sparkles size={16} /></div>
@@ -384,20 +527,34 @@ export function ChatWorkspace() {
         <button className="new-chat-wide" type="button" onClick={() => void createNewConversation()} disabled={isSending}>
           <Plus size={17} /> Nueva conversación
         </button>
+        <label className="history-search">
+          <Search size={15} />
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Buscar por título"
+            aria-label="Buscar conversaciones por título"
+          />
+        </label>
         <div className="history-list">
           {isBooting ? <p className="history-empty">Cargando historial…</p> : conversations.length === 0 ? (
             <div className="history-empty"><Clock3 size={22} /><p>Aún no hay conversaciones.</p></div>
           ) : conversations.map((conversation) => (
-            <button
-              type="button"
+            <div
               key={conversation.conversation_id}
               className={`history-item ${conversation.conversation_id === activeConversationId ? "history-item-active" : ""}`}
-              onClick={() => void openConversation(conversation.conversation_id)}
             >
-              <span className="history-item-icon"><MessageSquareText size={16} /></span>
-              <span className="history-item-copy"><strong>{conversation.title}</strong><small>{formatDate(conversation.updated_at)}</small></span>
-              <ArrowRight size={14} />
-            </button>
+              <button className="history-item-open" type="button" onClick={() => void openConversation(conversation.conversation_id)}>
+                <span className="history-item-icon"><MessageSquareText size={16} /></span>
+                <span className="history-item-copy"><strong>{conversation.title}</strong><small>{formatDate(conversation.updated_at)}</small></span>
+                <ArrowRight size={14} />
+              </button>
+              <span className="history-item-actions">
+                <button type="button" onClick={() => void renameConversation(conversation)} aria-label={`Renombrar ${conversation.title}`}><Pencil size={13} /></button>
+                <button type="button" onClick={() => void deleteConversation(conversation)} aria-label={`Eliminar ${conversation.title}`}><Trash2 size={13} /></button>
+              </span>
+            </div>
           ))}
         </div>
       </aside>

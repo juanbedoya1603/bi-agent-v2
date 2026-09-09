@@ -30,6 +30,7 @@ type ChatResponse = {
   conversation_id: string;
   answer: string;
   data: TableData | null;
+  user_message: Message;
   message: Message;
 };
 
@@ -54,13 +55,28 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(detail);
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
 export const api = {
+  health: () => apiRequest<{ status: string }>("/health"),
   createConversation: () =>
     apiRequest<Conversation>("/api/v1/conversations", { method: "POST" }),
-  listConversations: () => apiRequest<Conversation[]>("/api/v1/conversations"),
+  listConversations: (search = "") =>
+    apiRequest<Conversation[]>(
+      `/api/v1/conversations${search ? `?search=${encodeURIComponent(search)}` : ""}`,
+    ),
+  renameConversation: (conversationId: string, title: string) =>
+    apiRequest<Conversation>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
+      { method: "PATCH", body: JSON.stringify({ title }) },
+    ),
+  deleteConversation: (conversationId: string) =>
+    apiRequest<void>(
+      `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
+      { method: "DELETE" },
+    ),
   getMessages: (conversationId: string) =>
     apiRequest<ConversationMessages>(
       `/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`,
@@ -70,4 +86,13 @@ export const api = {
       `/api/v1/conversations/${encodeURIComponent(conversationId)}/messages`,
       { method: "POST", body: JSON.stringify({ message }) },
     ),
+  exportExcel: async (data: TableData) => {
+    const response = await fetch(`${API_URL}/api/v1/exports/excel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error("No pudimos generar el archivo de Excel.");
+    return response.blob();
+  },
 };

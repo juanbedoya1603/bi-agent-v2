@@ -27,10 +27,11 @@ El modelo puede escribir SQL. La seguridad real está en:
 - timeout;
 - máximo de filas retornadas.
 
-## Fase 3 implementada
+## Fase 4A implementada
 
-La API vive en `apps/api` y requiere Python 3.11. El chat usable vive en `apps/web`
-y utiliza Sessions SQLite del Agents SDK para mantener contexto entre turnos.
+La API vive en `apps/api` y requiere Python 3.11. El chat usable vive en `apps/web`.
+El historial visible y la auditoría usan una App DB SQL Server independiente; las
+Sessions SQLite del Agents SDK siguen manteniendo el contexto multi-turn.
 
 ```powershell
 py -3.11 -m venv .venv
@@ -46,8 +47,12 @@ Endpoints:
 - `POST /api/v1/chat` con `{"message": "Ventas de Colgate en Bogotá en agosto de 2026"}`
 - `POST /api/v1/conversations`
 - `GET /api/v1/conversations`
+- `GET /api/v1/conversations?search=texto`
+- `PATCH /api/v1/conversations/{conversation_id}`
+- `DELETE /api/v1/conversations/{conversation_id}`
 - `GET /api/v1/conversations/{conversation_id}/messages`
 - `POST /api/v1/conversations/{conversation_id}/messages`
+- `POST /api/v1/exports/excel`
 
 La respuesta contiene el texto final del agente y, cuando la última ejecución fue
 exitosa, `data` con columnas, filas, conteo y bandera de truncamiento.
@@ -76,6 +81,23 @@ No se debe asignar a esa identidad ningún rol de escritura o DDL. La conexión 
 `ApplicationIntent=ReadOnly`; esto complementa, pero no reemplaza, los permisos
 reales de SQL Server ni el guard AST de la aplicación.
 
+## App DB
+
+Configura `APP_DB_HOST`, `APP_DB_PORT`, `APP_DB_NAME`, `APP_DB_USER`,
+`APP_DB_PASSWORD` y `APP_DB_DRIVER` con una identidad SQL de lectura/escritura que no
+se reutilice para la base analítica. El esquema reproducible está en
+`apps/api/migrations/001_phase4a_app_db.sql` y crea:
+
+- `app_conversations`;
+- `app_messages`;
+- `app_audit_turns`;
+- `app_audit_sql_attempts`.
+
+La auditoría guarda tiempos, intentos y resultados SQL operativos. No guarda claves,
+contraseñas, cadenas de conexión ni tokens. El endpoint de Excel recibe exclusivamente
+las columnas y hasta 200 filas ya visibles, genera una sola hoja en memoria y no llama
+al agente ni a la base analítica.
+
 El tracing del Agents SDK está desactivado por cada ejecución y el `.env.example`
 también desactiva tracing y logging de datos de modelo/tool.
 
@@ -99,7 +121,7 @@ git diff --check
 - multi-agent;
 - LangChain/LangGraph;
 - Entra ID para el MVP;
-- App DB compleja para el MVP.
+- migración de Sessions del SDK fuera de SQLite;
 
 ## Orden de lectura para Codex
 

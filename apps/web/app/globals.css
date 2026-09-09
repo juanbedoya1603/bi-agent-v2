@@ -157,6 +157,20 @@ textarea:focus-visible {
   box-shadow: 0 0 0 4px rgba(72, 214, 197, 0.08), 0 0 14px rgba(72, 214, 197, 0.45);
 }
 
+.ready-state-connecting i {
+  background: var(--amber);
+  box-shadow: 0 0 0 4px rgba(224, 176, 88, 0.08);
+}
+
+.ready-state-offline {
+  color: #d89b95;
+}
+
+.ready-state-offline i {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(225, 104, 94, 0.08);
+}
+
 .header-button,
 .mobile-menu,
 .panel-close,
@@ -198,6 +212,11 @@ textarea:focus-visible {
 .new-chat-wide:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.copy-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .mobile-menu {
@@ -505,6 +524,10 @@ textarea:focus-visible {
   color: var(--amber);
 }
 
+.export-error {
+  color: var(--danger);
+}
+
 .copy-button {
   height: 27px;
   display: inline-flex;
@@ -522,6 +545,88 @@ textarea:focus-visible {
 .copy-button:hover {
   color: var(--text);
   border-color: var(--line-strong);
+}
+
+.export-button {
+  margin-left: 0;
+}
+
+.markdown-copy > :first-child {
+  margin-top: 0;
+}
+
+.markdown-copy > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-copy p,
+.markdown-copy ul,
+.markdown-copy ol {
+  margin: 0 0 12px;
+}
+
+.markdown-copy ul,
+.markdown-copy ol {
+  padding-left: 22px;
+}
+
+.markdown-copy .inline-code {
+  padding: 2px 5px;
+  border: 1px solid #294046;
+  border-radius: 5px;
+  background: #0d191d;
+  font-family: var(--data);
+  font-size: 0.88em;
+}
+
+.code-block {
+  margin: 14px 0;
+  overflow: hidden;
+  border: 1px solid #294046;
+  border-radius: 11px;
+  background: #071013;
+}
+
+.code-heading {
+  min-height: 37px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px 5px 13px;
+  color: #7f999d;
+  border-bottom: 1px solid #21343a;
+  font-family: var(--data);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.code-heading button {
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: #91a7aa;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--ink-raised);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 15px;
+  overflow-x: auto;
+}
+
+.code-block code {
+  color: #bfe2dc;
+  font-family: var(--data);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
 }
 
 .table-scroll {
@@ -805,24 +910,50 @@ kbd {
 }
 
 .history-list {
-  max-height: calc(100dvh - 145px);
+  max-height: calc(100dvh - 196px);
   margin-top: 18px;
   overflow-y: auto;
+}
+
+.history-search {
+  height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 0 11px;
+  color: #6f878a;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0e1b1f;
+}
+
+.history-search:focus-within {
+  color: var(--cyan);
+  border-color: #3a6b6d;
+}
+
+.history-search input {
+  width: 100%;
+  color: var(--text);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 12px;
 }
 
 .history-item {
   width: 100%;
   display: grid;
-  grid-template-columns: 32px 1fr 14px;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 10px;
-  padding: 11px 9px;
+  padding: 3px;
   text-align: left;
   color: #71878a;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  cursor: pointer;
 }
 
 .history-item:hover,
@@ -830,6 +961,50 @@ kbd {
   color: #a6b8ba;
   border-color: var(--line);
   background: var(--panel);
+}
+
+.history-item-open {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px 1fr 14px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  text-align: left;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.history-item-actions {
+  display: flex;
+  gap: 2px;
+  padding-right: 3px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.history-item:hover .history-item-actions,
+.history-item:focus-within .history-item-actions {
+  opacity: 1;
+}
+
+.history-item-actions button {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  color: #789093;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.history-item-actions button:hover {
+  color: var(--text);
+  background: #1b2c31;
 }
 
 .history-item-icon {

@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
+from io import BytesIO
+from time import perf_counter
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .agent import answer_question
 from .config import get_settings
@@ -14,6 +17,7 @@ from .conversations import (
     ConversationSummary,
     get_conversation_store,
 )
+from .excel_export import build_excel
 
 ConversationStoreDependency = Annotated[ConversationStore, Depends(get_conversation_store)]
 
@@ -34,7 +38,35 @@ class ConversationMessagesResponse(BaseModel):
 
 class ConversationChatResponse(ChatResponse):
     conversation_id: str
+    user_message: ConversationMessage
     message: ConversationMessage
+
+
+class RenameConversationRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("El título no puede estar vacío.")
+        return title
+
+
+class ExcelExportRequest(BaseModel):
+    columns: list[str] = Field(min_length=1, max_length=100)
+    rows: list[list[Any]] = Field(max_length=200)
+    row_count: int = Field(ge=0, le=200)
+    truncated: bool = False
+
+    @model_validator(mode="after")
+    def validate_visible_table(self) -> "ExcelExportRequest":
+        if self.row_count != len(self.rows):
+            raise ValueError("row_count debe coincidir con las filas visibles.")
+        if any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("Todas las filas deben coincidir con las columnas.")
+        return self
 
 
 @asynccontextmanager
@@ -48,7 +80,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[get_settings().web_origin],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -85,8 +117,44 @@ async def create_conversation(
 @app.get("/api/v1/conversations", response_model=list[ConversationSummary])
 async def list_conversations(
     store: ConversationStoreDependency,
+    search: str | None = Query(default=None, max_length=200),
 ) -> list[ConversationSummary]:
-    return store.list_conversations()
+    return store.list_conversations(search)
+
+
+@app.patch("/api/v1/conversations/{conversation_id}", response_model=ConversationSummary)
+async def rename_conversation(
+    conversation_id: str,
+    request: RenameConversationRequest,
+    store: ConversationStoreDependency,
+) -> ConversationSummary:
+    try:
+        return store.rename_conversation(conversation_id, request.title)
+    except ConversationNotFoundError as error:
+        raise HTTPException(status_code=404, detail="La conversación no existe.") from error
+
+
+@app.delete("/api/v1/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: str,
+    store: ConversationStoreDependency,
+) -> Response:
+    try:
+        store.delete_conversation(conversation_id)
+    except ConversationNotFoundError as error:
+        raise HTTPException(status_code=404, detail="La conversación no existe.") from error
+    return Response(status_code=204)
+
+
+@app.post("/api/v1/exports/excel")
+async def export_excel(request: ExcelExportRequest) -> StreamingResponse:
+    content = build_excel(request.columns, request.rows)
+    headers = {"Content-Disposition": 'attachment; filename="datos-bi.xlsx"'}
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @app.get(
@@ -115,10 +183,11 @@ async def send_conversation_message(
     request: ChatRequest,
     store: ConversationStoreDependency,
 ) -> ConversationChatResponse:
+    started_at = perf_counter()
+    context = None
     try:
         conversation_lock = await store.lock_for(conversation_id)
         async with conversation_lock:
-            store.add_message(conversation_id, "user", request.message)
             session = store.sdk_session(conversation_id)
             try:
                 answer, context = await answer_question(
@@ -133,12 +202,42 @@ async def send_conversation_message(
                 if context.latest_result and context.latest_result.get("ok")
                 else None
             )
-            message = store.add_message(conversation_id, "assistant", answer, data)
+            duration_ms = (perf_counter() - started_at) * 1000
+            latest_error = (
+                (context.latest_result.get("error") or {}).get("type")
+                if context.latest_result and not context.latest_result.get("ok")
+                else None
+            )
+            user_message, message = store.add_turn(
+                conversation_id,
+                request.message,
+                answer,
+                data,
+                duration_ms=duration_ms,
+                sql_history=getattr(context, "sql_history", ()),
+                sql_durations_ms=getattr(context, "sql_durations_ms", ()),
+                audit_success=latest_error is None,
+                audit_error=latest_error,
+            )
     except ConversationNotFoundError as error:
         raise HTTPException(status_code=404, detail="La conversación no existe.") from error
     except ValueError as error:
+        store.add_failed_audit(
+            conversation_id,
+            duration_ms=(perf_counter() - started_at) * 1000,
+            sql_history=getattr(context, "sql_history", ()),
+            sql_durations_ms=getattr(context, "sql_durations_ms", ()),
+            error="configuration_error",
+        )
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:
+        store.add_failed_audit(
+            conversation_id,
+            duration_ms=(perf_counter() - started_at) * 1000,
+            sql_history=getattr(context, "sql_history", ()),
+            sql_durations_ms=getattr(context, "sql_durations_ms", ()),
+            error="agent_error",
+        )
         raise HTTPException(
             status_code=502,
             detail="No fue posible completar la consulta analítica.",
@@ -147,5 +246,6 @@ async def send_conversation_message(
         conversation_id=conversation_id,
         answer=answer,
         data=data,
+        user_message=user_message,
         message=message,
     )

@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     analytics_db_password: str = ""
     analytics_db_driver: str = "ODBC Driver 18 for SQL Server"
 
+    app_db_host: str = ""
+    app_db_port: int = Field(default=1433, ge=1, le=65535)
+    app_db_name: str = ""
+    app_db_user: str = ""
+    app_db_password: str = ""
+    app_db_driver: str = "ODBC Driver 18 for SQL Server"
+
     query_timeout_seconds: int = Field(default=600, gt=0)
     max_result_rows: int = Field(default=200, ge=1, le=200)
 
@@ -73,6 +80,29 @@ class Settings(BaseSettings):
             )
         )
         return ";".join(parts)
+
+    def app_database_connection_string(self) -> str:
+        required = {
+            "APP_DB_HOST": self.app_db_host,
+            "APP_DB_NAME": self.app_db_name,
+            "APP_DB_USER": self.app_db_user,
+            "APP_DB_PASSWORD": self.app_db_password,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise ValueError(f"Falta configuración de App DB: {', '.join(missing)}")
+
+        return ";".join(
+            (
+                f"DRIVER={{{self.app_db_driver}}}",
+                f"SERVER={self.app_db_host},{self.app_db_port}",
+                f"DATABASE={self.app_db_name}",
+                f"UID={self.app_db_user}",
+                f"PWD={{{self.app_db_password}}}",
+                "Encrypt=yes",
+                "TrustServerCertificate=no",
+            )
+        )
 
 
 @lru_cache
