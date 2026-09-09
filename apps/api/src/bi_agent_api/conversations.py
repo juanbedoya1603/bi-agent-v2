@@ -65,6 +65,13 @@ conversations = Table(
     "app_conversations",
     metadata,
     Column("conversation_id", String(36), primary_key=True),
+    Column(
+        "user_id",
+        identity_type,
+        ForeignKey(f"{APP_DB_SCHEMA}.app_users.user_id"),
+        nullable=True,
+        index=True,
+    ),
     Column("title", Unicode(200), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
@@ -94,6 +101,13 @@ audit_turns = Table(
     "app_audit_turns",
     metadata,
     Column("audit_id", identity_type, primary_key=True, autoincrement=True),
+    Column(
+        "user_id",
+        identity_type,
+        ForeignKey(f"{APP_DB_SCHEMA}.app_users.user_id"),
+        nullable=True,
+        index=True,
+    ),
     Column(
         "conversation_id",
         String(36),
@@ -173,6 +187,9 @@ class ConversationStore:
         self._conversation_locks: dict[str, asyncio.Lock] = {}
         self._locks_guard = asyncio.Lock()
         if initialize:
+            # Import registers the auth tables in this shared metadata.
+            from . import auth as _auth  # noqa: F401
+
             metadata.create_all(self.engine)
 
     @staticmethod
@@ -184,13 +201,14 @@ class ConversationStore:
             updated_at=_isoformat(row.updated_at),
         )
 
-    def create_conversation(self) -> ConversationSummary:
+    def create_conversation(self, user_id: int) -> ConversationSummary:
         conversation_id = str(uuid4())
         timestamp = _now()
         with self.engine.begin() as connection:
             connection.execute(
                 insert(conversations).values(
                     conversation_id=conversation_id,
+                    user_id=user_id,
                     title="Nueva conversación",
                     created_at=timestamp,
                     updated_at=timestamp,
@@ -203,8 +221,10 @@ class ConversationStore:
             updated_at=timestamp.isoformat(),
         )
 
-    def list_conversations(self, search: str | None = None) -> list[ConversationSummary]:
-        statement = select(conversations)
+    def list_conversations(
+        self, user_id: int, search: str | None = None
+    ) -> list[ConversationSummary]:
+        statement = select(conversations).where(conversations.c.user_id == user_id)
         if search and (term := search.strip()):
             statement = statement.where(func.lower(conversations.c.title).contains(term.lower()))
         statement = statement.order_by(conversations.c.updated_at.desc())
@@ -212,17 +232,20 @@ class ConversationStore:
             rows = connection.execute(statement).fetchall()
         return [self._summary(row) for row in rows]
 
-    def get_conversation(self, conversation_id: str) -> ConversationSummary:
+    def get_conversation(self, conversation_id: str, user_id: int) -> ConversationSummary:
         with self.engine.connect() as connection:
             row = connection.execute(
-                select(conversations).where(conversations.c.conversation_id == conversation_id)
+                select(conversations).where(
+                    conversations.c.conversation_id == conversation_id,
+                    conversations.c.user_id == user_id,
+                )
             ).first()
         if row is None:
             raise ConversationNotFoundError(conversation_id)
         return self._summary(row)
 
-    def get_messages(self, conversation_id: str) -> list[ConversationMessage]:
-        self.get_conversation(conversation_id)
+    def get_messages(self, conversation_id: str, user_id: int) -> list[ConversationMessage]:
+        self.get_conversation(conversation_id, user_id)
         with self.engine.connect() as connection:
             rows = connection.execute(
                 select(messages)
@@ -241,23 +264,29 @@ class ConversationStore:
             created_at=_isoformat(row.created_at),
         )
 
-    def rename_conversation(self, conversation_id: str, title: str) -> ConversationSummary:
+    def rename_conversation(
+        self, conversation_id: str, user_id: int, title: str
+    ) -> ConversationSummary:
         timestamp = _now()
         with self.engine.begin() as connection:
             result = connection.execute(
                 update(conversations)
-                .where(conversations.c.conversation_id == conversation_id)
+                .where(
+                    conversations.c.conversation_id == conversation_id,
+                    conversations.c.user_id == user_id,
+                )
                 .values(title=title, updated_at=timestamp)
             )
             if result.rowcount == 0:
                 raise ConversationNotFoundError(conversation_id)
-        return self.get_conversation(conversation_id)
+        return self.get_conversation(conversation_id, user_id)
 
-    def delete_conversation(self, conversation_id: str) -> None:
+    def delete_conversation(self, conversation_id: str, user_id: int) -> None:
         with self.engine.begin() as connection:
             exists = connection.execute(
                 select(conversations.c.conversation_id).where(
-                    conversations.c.conversation_id == conversation_id
+                    conversations.c.conversation_id == conversation_id,
+                    conversations.c.user_id == user_id,
                 )
             ).first()
             if exists is None:
@@ -279,8 +308,10 @@ class ConversationStore:
             )
         self._conversation_locks.pop(conversation_id, None)
 
-    async def delete_conversation_with_session(self, conversation_id: str) -> None:
-        self.delete_conversation(conversation_id)
+    async def delete_conversation_with_session(
+        self, conversation_id: str, user_id: int
+    ) -> None:
+        self.delete_conversation(conversation_id, user_id)
         session = SQLiteSession(conversation_id, self.session_db_path)
         try:
             await session.clear_session()
@@ -294,6 +325,7 @@ class ConversationStore:
     def add_turn(
         self,
         conversation_id: str,
+        user_id: int,
         user_content: str,
         assistant_content: str,
         data: dict[str, Any] | None,
@@ -309,14 +341,17 @@ class ConversationStore:
         durations = list(sql_durations_ms)
         with self.engine.begin() as connection:
             conversation = connection.execute(
-                select(conversations).where(conversations.c.conversation_id == conversation_id)
+                select(conversations).where(
+                    conversations.c.conversation_id == conversation_id,
+                    conversations.c.user_id == user_id,
+                )
             ).first()
             if conversation is None:
                 raise ConversationNotFoundError(conversation_id)
             title = conversation.title
             if title == "Nueva conversación":
                 title = " ".join(user_content.split())[:64] or title
-            user_id = connection.execute(
+            user_message_id = connection.execute(
                 insert(messages).values(
                     conversation_id=conversation_id,
                     role="user",
@@ -342,6 +377,7 @@ class ConversationStore:
             self._insert_audit(
                 connection,
                 conversation_id,
+                user_id,
                 timestamp,
                 duration_ms,
                 attempts,
@@ -351,7 +387,7 @@ class ConversationStore:
             )
         return (
             ConversationMessage(
-                message_id=user_id,
+                message_id=user_message_id,
                 role="user",
                 content=user_content,
                 created_at=timestamp.isoformat(),
@@ -368,6 +404,7 @@ class ConversationStore:
     def add_failed_audit(
         self,
         conversation_id: str,
+        user_id: int,
         *,
         duration_ms: float,
         sql_history: Iterable[dict[str, Any]] = (),
@@ -379,7 +416,8 @@ class ConversationStore:
         with self.engine.begin() as connection:
             exists = connection.execute(
                 select(conversations.c.conversation_id).where(
-                    conversations.c.conversation_id == conversation_id
+                    conversations.c.conversation_id == conversation_id,
+                    conversations.c.user_id == user_id,
                 )
             ).first()
             if exists is None:
@@ -387,6 +425,7 @@ class ConversationStore:
             self._insert_audit(
                 connection,
                 conversation_id,
+                user_id,
                 timestamp,
                 duration_ms,
                 attempts,
@@ -399,6 +438,7 @@ class ConversationStore:
     def _insert_audit(
         connection: Any,
         conversation_id: str,
+        user_id: int,
         timestamp: datetime,
         duration_ms: float,
         attempts: list[dict[str, Any]],
@@ -410,6 +450,7 @@ class ConversationStore:
         audit_id = connection.execute(
             insert(audit_turns).values(
                 conversation_id=conversation_id,
+                user_id=user_id,
                 timestamp=timestamp,
                 duration_ms=duration_ms,
                 sql_attempt_count=len(attempts),
@@ -434,8 +475,8 @@ class ConversationStore:
                 )
             )
 
-    def sdk_session(self, conversation_id: str) -> SQLiteSession:
-        self.get_conversation(conversation_id)
+    def sdk_session(self, conversation_id: str, user_id: int) -> SQLiteSession:
+        self.get_conversation(conversation_id, user_id)
         return SQLiteSession(conversation_id, self.session_db_path)
 
     async def lock_for(self, conversation_id: str) -> asyncio.Lock:

@@ -11,6 +11,7 @@ import {
   Copy,
   Download,
   History,
+  LogOut,
   Menu,
   MessageSquareText,
   PackageSearch,
@@ -22,13 +23,14 @@ import {
   Send,
   Sparkles,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { api, Conversation, Message, TableData } from "@/lib/api";
+import { api, Conversation, Message, TableData, User } from "@/lib/api";
 
 const quickQueries = [
   {
@@ -273,7 +275,15 @@ function Welcome({ onQuery, disabled }: { onQuery: (prompt: string) => void; dis
   );
 }
 
-export function ChatWorkspace() {
+export function ChatWorkspace({
+  user,
+  onLogout,
+  onManageUsers,
+}: {
+  user: User;
+  onLogout: () => void;
+  onManageUsers: () => void;
+}) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -454,6 +464,15 @@ export function ChatWorkspace() {
           </span>
           <button className="header-button history-button" type="button" onClick={() => setIsHistoryOpen(true)}>
             <History size={16} /><span>Historial</span>
+          </button>
+          {user.is_admin && (
+            <button className="header-button user-action" type="button" onClick={onManageUsers}>
+              <Users size={16} /><span>Usuarios</span>
+            </button>
+          )}
+          <span className="current-user" title={user.username}>{user.display_name}</span>
+          <button className="icon-button logout-button" type="button" onClick={onLogout} aria-label="Cerrar sesión">
+            <LogOut size={16} />
           </button>
           <button className="header-button primary-header-button" type="button" onClick={() => void createNewConversation()} disabled={isSending}>
             <Plus size={16} /><span>Nueva conversación</span>

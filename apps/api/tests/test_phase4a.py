@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects import mssql
 from sqlalchemy.schema import CreateTable
 
+from bi_agent_api.auth import AuthStore, User, get_auth_store
 from bi_agent_api.config import Settings
 from bi_agent_api.conversations import (
     ConversationStore,
@@ -21,7 +22,21 @@ from bi_agent_api.conversations import (
     get_conversation_store,
     messages,
 )
-from bi_agent_api.main import app
+from bi_agent_api.main import app, current_user
+
+OWNER_ID = 1
+
+
+def authenticate(client: TestClient, store: ConversationStore) -> None:
+    auth = AuthStore(store.engine)
+    auth.create_user(
+        "tester", "Tester", "test-password", is_admin=True, must_change_password=False
+    )
+    app.dependency_overrides[get_auth_store] = lambda: auth
+    login = client.post(
+        "/api/v1/auth/login", json={"username": "tester", "password": "test-password"}
+    )
+    assert login.status_code == 200
 
 
 def test_app_db_config_is_independent_from_analytics_credentials() -> None:
@@ -79,7 +94,7 @@ def test_sql_server_statements_use_explicit_biagent_schema() -> None:
 
 def test_persistence_rename_search_audit_and_delete(tmp_path: Path) -> None:
     store = ConversationStore(tmp_path / "app.sqlite3", tmp_path / "sessions.sqlite3")
-    conversation = store.create_conversation()
+    conversation = store.create_conversation(OWNER_ID)
     result = {
         "ok": True,
         "columns": ["sales"],
@@ -89,6 +104,7 @@ def test_persistence_rename_search_audit_and_delete(tmp_path: Path) -> None:
     }
     user_message, assistant_message = store.add_turn(
         conversation.conversation_id,
+        OWNER_ID,
         "Ventas de septiembre",
         "Las ventas fueron 123.",
         result,
@@ -99,14 +115,19 @@ def test_persistence_rename_search_audit_and_delete(tmp_path: Path) -> None:
 
     assert user_message.role == "user"
     assert assistant_message.data == result
-    assert [item.role for item in store.get_messages(conversation.conversation_id)] == [
+    assert [item.role for item in store.get_messages(conversation.conversation_id, OWNER_ID)] == [
         "user",
         "assistant",
     ]
-    renamed = store.rename_conversation(conversation.conversation_id, "Ventas septiembre")
+    renamed = store.rename_conversation(
+        conversation.conversation_id, OWNER_ID, "Ventas septiembre"
+    )
     assert renamed.title == "Ventas septiembre"
-    assert store.list_conversations("septiembre")[0].conversation_id == conversation.conversation_id
-    assert store.list_conversations("sin coincidencias") == []
+    assert (
+        store.list_conversations(OWNER_ID, "septiembre")[0].conversation_id
+        == conversation.conversation_id
+    )
+    assert store.list_conversations(OWNER_ID, "sin coincidencias") == []
 
     with store.engine.connect() as connection:
         turn = connection.execute(select(audit_turns)).one()
@@ -120,7 +141,7 @@ def test_persistence_rename_search_audit_and_delete(tmp_path: Path) -> None:
     assert attempt.row_count == 1
     assert attempt.truncated is False
 
-    store.delete_conversation(conversation.conversation_id)
+    store.delete_conversation(conversation.conversation_id, OWNER_ID)
     with store.engine.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(messages)) == 0
         assert connection.scalar(select(func.count()).select_from(audit_turns)) == 0
@@ -132,8 +153,8 @@ async def test_delete_clears_only_matching_sdk_session(tmp_path: Path) -> None:
     app_db_path = tmp_path / "app.sqlite3"
     session_db_path = tmp_path / "sessions.sqlite3"
     store = ConversationStore(app_db_path, session_db_path)
-    first = store.create_conversation()
-    second = store.create_conversation()
+    first = store.create_conversation(OWNER_ID)
+    second = store.create_conversation(OWNER_ID)
     first_session = SQLiteSession(first.conversation_id, session_db_path)
     second_session = SQLiteSession(second.conversation_id, session_db_path)
     await first_session.add_items([{"role": "user", "content": "Primera"}])
@@ -141,7 +162,7 @@ async def test_delete_clears_only_matching_sdk_session(tmp_path: Path) -> None:
     first_session.close()
     second_session.close()
 
-    await store.delete_conversation_with_session(first.conversation_id)
+    await store.delete_conversation_with_session(first.conversation_id, OWNER_ID)
 
     deleted_session = SQLiteSession(first.conversation_id, session_db_path)
     retained_session = SQLiteSession(second.conversation_id, session_db_path)
@@ -163,8 +184,17 @@ def test_new_conversation_endpoints_and_excel_export(
     monkeypatch.setattr("bi_agent_api.main.answer_question", unexpected_call)
     monkeypatch.setattr("bi_agent_api.database.execute_query", unexpected_call)
     app.dependency_overrides[get_conversation_store] = lambda: store
+    app.dependency_overrides[current_user] = lambda: User(
+        user_id=OWNER_ID,
+        username="tester",
+        display_name="Tester",
+        is_admin=False,
+        is_active=True,
+        must_change_password=False,
+    )
     try:
         with TestClient(app) as client:
+            authenticate(client, store)
             created = client.post("/api/v1/conversations").json()
             conversation_id = created["conversation_id"]
             renamed = client.patch(
@@ -215,6 +245,7 @@ def test_failed_turn_does_not_leave_visible_message(
     app.dependency_overrides[get_conversation_store] = lambda: store
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
+            authenticate(client, store)
             conversation_id = client.post("/api/v1/conversations").json()["conversation_id"]
             response = client.post(
                 f"/api/v1/conversations/{conversation_id}/messages",
@@ -241,7 +272,7 @@ def test_app_db_failure_rolls_back_only_current_sdk_session_items(
 ) -> None:
     session_db_path = tmp_path / "sessions.sqlite3"
     store = ConversationStore(tmp_path / "app.sqlite3", session_db_path)
-    conversation = store.create_conversation()
+    conversation = store.create_conversation(OWNER_ID)
     previous_items = [
         {"role": "user", "content": "Pregunta anterior"},
         {
@@ -284,6 +315,14 @@ def test_app_db_failure_rolls_back_only_current_sdk_session_items(
     if failed_audit:
         monkeypatch.setattr(store, "add_failed_audit", fail_persistence)
     app.dependency_overrides[get_conversation_store] = lambda: store
+    app.dependency_overrides[current_user] = lambda: User(
+        user_id=OWNER_ID,
+        username="tester",
+        display_name="Tester",
+        is_admin=False,
+        is_active=True,
+        must_change_password=False,
+    )
     try:
         with TestClient(app) as client:
             response = client.post(
@@ -301,11 +340,14 @@ def test_app_db_failure_rolls_back_only_current_sdk_session_items(
 
     assert response.status_code == 502
     assert asyncio.run(read_session()) == previous_items
-    assert store.get_messages(conversation.conversation_id) == []
+    assert store.get_messages(conversation.conversation_id, OWNER_ID) == []
 
 
-def test_excel_rejects_more_than_visible_limit() -> None:
+def test_excel_rejects_more_than_visible_limit(tmp_path: Path) -> None:
+    store = ConversationStore(tmp_path / "app.sqlite3", tmp_path / "sessions.sqlite3")
+    app.dependency_overrides[get_conversation_store] = lambda: store
     with TestClient(app) as client:
+        authenticate(client, store)
         response = client.post(
             "/api/v1/exports/excel",
             json={
@@ -315,4 +357,5 @@ def test_excel_rejects_more_than_visible_limit() -> None:
                 "truncated": True,
             },
         )
+    app.dependency_overrides.clear()
     assert response.status_code == 422

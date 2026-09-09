@@ -36,7 +36,8 @@ body {
 }
 
 button,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
@@ -45,7 +46,8 @@ button {
 }
 
 button:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+input:focus-visible {
   outline: 2px solid var(--cyan);
   outline-offset: 2px;
 }
@@ -137,6 +139,168 @@ textarea:focus-visible {
   justify-content: flex-end;
   gap: 10px;
 }
+
+.current-user {
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--muted-strong);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-button {
+  flex: 0 0 auto;
+  border-color: var(--line);
+}
+
+.auth-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(72, 214, 197, 0.08), transparent 38%),
+    var(--ink);
+}
+
+.auth-card {
+  width: min(430px, 100%);
+  padding: 38px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: rgba(14, 25, 29, 0.96);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.3);
+}
+
+.auth-mark,
+.user-avatar {
+  display: grid;
+  place-items: center;
+  color: var(--cyan);
+  background: var(--cyan-dim);
+}
+
+.auth-mark {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 22px;
+  border: 1px solid #21645f;
+  border-radius: 13px;
+}
+
+.auth-card h1 {
+  margin: 8px 0;
+  font-family: var(--display);
+  font-size: 30px;
+  letter-spacing: -0.03em;
+}
+
+.auth-card > p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: grid;
+  gap: 15px;
+  margin-top: 26px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.auth-form input:not([type="checkbox"]) {
+  width: 100%;
+  height: 43px;
+  padding: 0 12px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: 0;
+  background: #091316;
+}
+
+.auth-form small {
+  color: var(--muted);
+}
+
+.auth-primary {
+  min-height: 43px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  color: #06201f;
+  border: 0;
+  border-radius: 10px;
+  background: var(--cyan);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.auth-primary:disabled { cursor: wait; opacity: 0.6; }
+.auth-primary.compact { min-height: 38px; margin: 20px 0; }
+.form-error { color: var(--danger) !important; font-size: 12px; }
+
+.admin-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 8, 9, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.admin-panel {
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 40px);
+  padding: 26px;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: #0b1518;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.45);
+}
+
+.admin-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-panel h2 { margin: 5px 0 0; font-family: var(--display); font-size: 26px; }
+.create-user-form { margin: 0 0 22px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; }
+.checkbox-label { display: flex !important; grid-template-columns: auto 1fr; align-items: center; }
+.users-list { display: grid; gap: 8px; }
+
+.user-row {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+}
+
+.user-row-inactive { opacity: 0.55; }
+.user-avatar { width: 38px; height: 38px; border-radius: 9px; }
+.user-row strong, .user-row small { display: block; }
+.user-row strong { font-size: 13px; }
+.user-row small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.user-row-actions { display: flex; gap: 4px; }
+.user-row-actions button { width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted-strong); border: 1px solid var(--line); border-radius: 7px; background: var(--ink-raised); cursor: pointer; }
 
 .ready-state {
   display: inline-flex;

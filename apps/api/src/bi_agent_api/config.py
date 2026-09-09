@@ -43,6 +43,9 @@ class Settings(BaseSettings):
 
     session_db_path: Path = Path("tmp/bi_agent_sessions.sqlite3")
     web_origin: str = "http://localhost:3000"
+    bootstrap_admin_username: str = ""
+    bootstrap_admin_password: str = ""
+    bootstrap_admin_display_name: str = ""
 
     def database_connection_string(self) -> str:
         required = {

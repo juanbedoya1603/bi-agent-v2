@@ -1,5 +1,5 @@
-import { ChatWorkspace } from "@/components/chat-workspace";
+import { AuthShell } from "@/components/auth-shell";
 
 export default function Home() {
-  return <ChatWorkspace />;
+  return <AuthShell />;
 }

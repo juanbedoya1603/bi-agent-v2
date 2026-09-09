@@ -21,6 +21,15 @@ export type Message = {
   created_at: string;
 };
 
+export type User = {
+  user_id: number;
+  username: string;
+  display_name: string;
+  is_admin: boolean;
+  is_active: boolean;
+  must_change_password: boolean;
+};
+
 type ConversationMessages = {
   conversation: Conversation;
   messages: Message[];
@@ -39,6 +48,7 @@ const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").rep
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...init?.headers,
@@ -61,6 +71,35 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => apiRequest<{ status: string }>("/health"),
+  me: () => apiRequest<User>("/api/v1/auth/me"),
+  login: (username: string, password: string) =>
+    apiRequest<User>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => apiRequest<void>("/api/v1/auth/logout", { method: "POST" }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiRequest<User>("/api/v1/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+  listUsers: () => apiRequest<User[]>("/api/v1/admin/users"),
+  createUser: (input: {
+    username: string; display_name: string; temporary_password: string; is_admin: boolean;
+  }) => apiRequest<User>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(input) }),
+  editUser: (userId: number, input: { username: string; display_name: string }) =>
+    apiRequest<User>(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH", body: JSON.stringify(input),
+    }),
+  setUserActive: (userId: number, active: boolean) =>
+    apiRequest<User>(
+      `/api/v1/admin/users/${encodeURIComponent(userId)}/${active ? "activate" : "deactivate"}`,
+      { method: "POST" },
+    ),
+  resetUserPassword: (userId: number, temporaryPassword: string) =>
+    apiRequest<User>(`/api/v1/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+      method: "POST", body: JSON.stringify({ temporary_password: temporaryPassword }),
+    }),
   createConversation: () =>
     apiRequest<Conversation>("/api/v1/conversations", { method: "POST" }),
   listConversations: (search = "") =>
@@ -89,6 +128,7 @@ export const api = {
   exportExcel: async (data: TableData) => {
     const response = await fetch(`${API_URL}/api/v1/exports/excel`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });

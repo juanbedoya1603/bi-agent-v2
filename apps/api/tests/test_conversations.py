@@ -4,8 +4,21 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from bi_agent_api.auth import AuthStore, get_auth_store
 from bi_agent_api.conversations import ConversationStore, get_conversation_store
 from bi_agent_api.main import app
+
+
+def authenticate(client: TestClient, store: ConversationStore) -> None:
+    auth = AuthStore(store.engine)
+    auth.create_user(
+        "tester", "Tester", "test-password", is_admin=True, must_change_password=False
+    )
+    app.dependency_overrides[get_auth_store] = lambda: auth
+    response = client.post(
+        "/api/v1/auth/login", json={"username": "tester", "password": "test-password"}
+    )
+    assert response.status_code == 200
 
 
 def test_create_list_and_open_conversation(tmp_path: Path) -> None:
@@ -13,6 +26,7 @@ def test_create_list_and_open_conversation(tmp_path: Path) -> None:
     app.dependency_overrides[get_conversation_store] = lambda: store
     try:
         with TestClient(app) as client:
+            authenticate(client, store)
             created = client.post("/api/v1/conversations")
             conversation_id = created.json()["conversation_id"]
             listed = client.get("/api/v1/conversations")
@@ -59,6 +73,7 @@ def test_conversation_chat_persists_visible_messages(
     app.dependency_overrides[get_conversation_store] = lambda: store
     try:
         with TestClient(app) as client:
+            authenticate(client, store)
             created = client.post("/api/v1/conversations").json()
             conversation_id = created["conversation_id"]
             response = client.post(
@@ -82,6 +97,7 @@ def test_unknown_conversation_returns_404(tmp_path: Path) -> None:
     app.dependency_overrides[get_conversation_store] = lambda: store
     try:
         with TestClient(app) as client:
+            authenticate(client, store)
             response = client.get("/api/v1/conversations/missing/messages")
     finally:
         app.dependency_overrides.clear()
