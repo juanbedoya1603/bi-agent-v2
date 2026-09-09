@@ -158,6 +158,7 @@ def test_bootstrap_is_idempotent_and_assigns_legacy_rows(tmp_path: Path) -> None
     )
     admin = auth.bootstrap_admin(settings)
     assert admin and admin.is_admin and admin.username == "admin"
+    assert admin.must_change_password is True
     assert auth.bootstrap_admin(settings) is None
     with conversation_store.engine.connect() as connection:
         assert connection.scalar(select(conversations.c.user_id)) == admin.user_id

@@ -432,7 +432,7 @@ class AuthStore:
                         password_hash=hash_password(settings.bootstrap_admin_password),
                         is_admin=True,
                         is_active=True,
-                        must_change_password=False,
+                        must_change_password=True,
                         failed_login_attempts=0,
                         locked_until=None,
                         created_at=timestamp,
