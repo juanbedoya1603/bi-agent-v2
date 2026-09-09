@@ -6,6 +6,7 @@ import {
   Boxes,
   Building2,
   Check,
+  ChevronDown,
   ChevronRight,
   Clock3,
   Copy,
@@ -228,8 +229,56 @@ function MarkdownMessage({ content }: { content: string }) {
   );
 }
 
+const tokenFormatter = new Intl.NumberFormat("es-CO");
+const localDateFormatter = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+const localTimeFormatter = new Intl.DateTimeFormat("es-CO", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function formatTokens(value: number | null) {
+  return value === null ? "—" : tokenFormatter.format(value);
+}
+
+function UsageDetails({ message, expanded }: { message: Message; expanded: boolean }) {
+  const usage = message.metadata;
+  if (!usage) return null;
+  const timestamp = new Date(message.created_at);
+  const cost = usage.estimated_cost_usd === null
+    ? "—"
+    : `US$${Number(usage.estimated_cost_usd).toFixed(6)}`;
+  const details = [
+    ["Fecha", localDateFormatter.format(timestamp)],
+    ["Hora", localTimeFormatter.format(timestamp)],
+    ["Tiempo", `${(usage.duration_ms / 1000).toFixed(2)} s`],
+    ["Tokens", formatTokens(usage.total_tokens)],
+    ["Entrada", formatTokens(usage.input_tokens)],
+    ["Caché", formatTokens(usage.cached_input_tokens)],
+    ["Salida", formatTokens(usage.output_tokens)],
+    ["Razonamiento", formatTokens(usage.reasoning_tokens)],
+    ["Costo", cost],
+  ];
+
+  return (
+    <div className={`usage-panel-shell ${expanded ? "usage-panel-open" : ""}`} aria-hidden={!expanded}>
+      <dl className="usage-panel" id={`usage-${message.message_id}`}>
+        {details.map(([label, value]) => (
+          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function AssistantMessage({ message }: { message: Message }) {
   const [copied, setCopied] = useState(false);
+  const [usageExpanded, setUsageExpanded] = useState(false);
   const tableData = message.data;
 
   async function copyAnswer() {
@@ -247,7 +296,20 @@ function AssistantMessage({ message }: { message: Message }) {
           <button type="button" className="icon-button" onClick={copyAnswer} aria-label="Copiar respuesta">
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
+          {message.metadata && (
+            <button
+              type="button"
+              className="icon-button usage-toggle"
+              onClick={() => setUsageExpanded((current) => !current)}
+              aria-label={usageExpanded ? "Ocultar detalles de uso" : "Ver detalles de uso"}
+              aria-expanded={usageExpanded}
+              aria-controls={`usage-${message.message_id}`}
+            >
+              <ChevronDown size={14} />
+            </button>
+          )}
         </div>
+        <UsageDetails message={message} expanded={usageExpanded} />
         <MarkdownMessage content={message.content} />
         {tableData && tableData.columns.length > 0 && <ResultTable data={tableData} />}
       </div>

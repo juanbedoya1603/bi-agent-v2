@@ -721,6 +721,72 @@ input:focus-visible {
   border-color: var(--line);
 }
 
+.usage-toggle {
+  margin-left: -5px;
+}
+
+.usage-toggle svg {
+  transition: transform 180ms ease;
+}
+
+.usage-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.usage-panel-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 180ms ease, opacity 150ms ease;
+}
+
+.usage-panel-shell.usage-panel-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.usage-panel {
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+  color: #90a5a6;
+  font-family: var(--data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-panel::before {
+  content: "";
+  display: block;
+  height: 4px;
+}
+
+.usage-panel::after {
+  content: "";
+  display: block;
+  height: 8px;
+}
+
+.usage-panel > div {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.42fr) minmax(110px, 1fr);
+  max-width: 300px;
+  padding: 2px 0;
+}
+
+.usage-panel dt,
+.usage-panel dd {
+  margin: 0;
+}
+
+.usage-panel dt {
+  color: #6f8587;
+}
+
+.usage-panel dd {
+  color: #adc0bf;
+}
+
 .message-copy {
   margin: 0;
   color: #d9e4e2;

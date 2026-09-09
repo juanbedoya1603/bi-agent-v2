@@ -27,11 +27,14 @@ El modelo puede escribir SQL. La seguridad real está en:
 - timeout;
 - máximo de filas retornadas.
 
-## Fase 4A implementada
+## Fases 4A, 4B y 4C implementadas
 
 La API vive en `apps/api` y requiere Python 3.11. El chat usable vive en `apps/web`.
 El historial visible y la auditoría usan una App DB SQL Server independiente; las
 Sessions SQLite del Agents SDK siguen manteniendo el contexto multi-turn.
+La autenticación local aísla conversaciones y auditoría por usuario. Cada respuesta
+del agente persiste además la duración, el modelo, el uso real reportado por Agents SDK
+y el costo estimado cuando el modelo tiene un precio registrado.
 
 ```powershell
 py -3.11 -m venv .venv
@@ -44,7 +47,10 @@ uvicorn bi_agent_api.main:app --reload
 Endpoints:
 
 - `GET /health`
-- `POST /api/v1/chat` con `{"message": "Ventas de Colgate en Bogotá en agosto de 2026"}`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/change-password`
 - `POST /api/v1/conversations`
 - `GET /api/v1/conversations`
 - `GET /api/v1/conversations?search=texto`
@@ -56,6 +62,9 @@ Endpoints:
 
 La respuesta contiene el texto final del agente y, cuando la última ejecución fue
 exitosa, `data` con columnas, filas, conteo y bandera de truncamiento.
+Los mensajes assistant incluyen `metadata` opcional con duración, modelo, requests,
+tokens de entrada/caché/salida/razonamiento/totales y costo. Los mensajes históricos
+sin telemetría y los mensajes user devuelven `metadata: null`.
 
 Para iniciar el frontend:
 
@@ -87,7 +96,14 @@ Configura `APP_DB_HOST`, `APP_DB_PORT`, `APP_DB_NAME`, `APP_DB_USER`,
 `APP_DB_PASSWORD` y `APP_DB_DRIVER` con una identidad SQL de lectura/escritura que no
 se reutilice para la base analítica. El esquema reproducible está en
 `apps/api/migrations/001_phase4a_app_db.sql`. La aplicación usa siempre el schema fijo
-`biAgent`, sin depender del schema predeterminado del usuario SQL, y crea:
+`biAgent`, sin depender del schema predeterminado del usuario SQL. Las migraciones se
+aplican manualmente, en orden:
+
+- `001_phase4a_app_db.sql`: conversaciones, mensajes y auditoría;
+- `002_phase4b_local_auth.sql`: usuarios, sesiones y ownership;
+- `003_phase4c_usage.sql`: vínculo audit/message y telemetría de uso/costo.
+
+Las tablas principales son:
 
 - `biAgent.app_conversations`;
 - `biAgent.app_messages`;
@@ -98,6 +114,13 @@ La auditoría guarda tiempos, intentos y resultados SQL operativos. No guarda cl
 contraseñas, cadenas de conexión ni tokens. El endpoint de Excel recibe exclusivamente
 las columnas y hasta 200 filas ya visibles, genera una sola hoja en memoria y no llama
 al agente ni a la base analítica.
+
+`app_conversations.user_id` y `app_audit_turns.user_id` permanecen nullable en el
+esquema físico por compatibilidad; la aplicación exige ownership en todas las rutas.
+El costo se calcula con `Decimal` para `gpt-5-mini`: input no cacheado a US$0.25/M,
+input cacheado a US$0.025/M y output a US$2.00/M. Los tokens de razonamiento ya están
+incluidos en output y no se cobran de nuevo. Modelos sin precio registrado conservan
+su usage con `estimated_cost_usd = NULL`.
 
 El tracing del Agents SDK está desactivado por cada ejecución y el `.env.example`
 también desactiva tracing y logging de datos de modelo/tool.

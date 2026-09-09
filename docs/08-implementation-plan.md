@@ -16,7 +16,7 @@ Entregar:
 - tool `run_readonly_sql`;
 - un `Agent` de Agents SDK;
 - system prompt inicial;
-- endpoint `POST /api/v1/chat`;
+- primer endpoint de chat (retirado en 4C al consolidar el flujo por conversación);
 - tests del SQL guard.
 
 Casos de aceptación:
@@ -63,15 +63,34 @@ MVP puede usar SQLite para sesiones.
 
 ## Fase 4 — Extras después de validar valor
 
-Solo si el equipo ya lo está usando:
+### Fase 4A — Completada
 
-- exportar Excel;
-- historial/listado de chats más completo;
-- Entra ID;
-- App DB SQL Server;
-- métricas de uso/costos;
-- deployment endurecido;
-- más controles por usuario.
+- App DB SQL Server independiente;
+- historial, búsqueda, renombrado y eliminación de conversaciones;
+- auditoría de turnos e intentos SQL;
+- exportación de las filas visibles a Excel;
+- rollback coordinado del turno actual entre App DB y Session SQLite.
+
+### Fase 4B — Completada
+
+- autenticación local con Argon2id y cookie HttpOnly;
+- sesiones revocables, cambio/reset de contraseña y lockout;
+- administración básica de usuarios;
+- ownership funcional y aislamiento por `user_id`.
+
+### Fase 4C — Completada
+
+- usage real de cada `Runner.run` tomado de `result.context_wrapper.usage`;
+- duración, modelo, requests y tokens persistidos por respuesta;
+- costo `Decimal` para modelos con precio registrado;
+- relación uno-a-uno desde audit hacia `assistant_message_id`;
+- metadata opcional en el historial y desplegable accesible por respuesta;
+- logout real desde “Volver al login”;
+- eliminación de `POST /api/v1/chat`; el único flujo oficial es
+  `POST /api/v1/conversations/{conversation_id}/messages`.
+
+Pendiente para fases posteriores: Entra ID, deployment, dashboards/gráficas agregadas,
+presupuestos, billing y migración de Sessions fuera de SQLite.
 
 ## Definition of Done del MVP
 

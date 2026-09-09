@@ -13,12 +13,25 @@ export type Conversation = {
   updated_at: string;
 };
 
+export type MessageMetadata = {
+  duration_ms: number;
+  model_name: string | null;
+  llm_requests: number | null;
+  input_tokens: number | null;
+  cached_input_tokens: number | null;
+  output_tokens: number | null;
+  reasoning_tokens: number | null;
+  total_tokens: number | null;
+  estimated_cost_usd: string | null;
+};
+
 export type Message = {
   message_id: number;
   role: "user" | "assistant";
   content: string;
   data: TableData | null;
   created_at: string;
+  metadata: MessageMetadata | null;
 };
 
 export type User = {

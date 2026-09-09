@@ -9,6 +9,7 @@ from .config import Settings
 from .database import execute_query
 from .prompt import build_system_prompt
 from .tools import BiAgentContext, SqlExecutor, run_readonly_sql
+from .usage import extract_run_usage
 
 
 def _production_model(settings: Settings) -> OpenAIResponsesModel:
@@ -57,4 +58,5 @@ async def answer_question(
             workflow_name="BI question",
         ),
     )
+    context.usage = extract_run_usage(result)
     return str(result.final_output), context

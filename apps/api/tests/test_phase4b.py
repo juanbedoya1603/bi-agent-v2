@@ -289,7 +289,7 @@ def test_only_health_and_login_are_public(tmp_path: Path) -> None:
             assert login(client, "missing", "not-a-password").status_code == 401
             assert client.get("/api/v1/auth/me").status_code == 401
             assert client.post("/api/v1/auth/logout").status_code == 401
-            assert client.post("/api/v1/chat", json={"message": "Ventas"}).status_code == 401
+            assert client.post("/api/v1/chat", json={"message": "Ventas"}).status_code == 404
             assert client.post("/api/v1/exports/excel", json={}).status_code == 401
             assert client.get("/api/v1/conversations").status_code == 401
             assert client.get("/api/v1/admin/users").status_code == 401

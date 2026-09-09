@@ -2,6 +2,7 @@ import asyncio
 import json
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +22,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
     String,
     Table,
     Unicode,
@@ -36,6 +38,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 
 from .config import get_settings
+from .usage import AgentUsage, estimate_cost_usd
 
 
 class ConversationNotFoundError(LookupError):
@@ -55,6 +58,19 @@ class ConversationMessage(BaseModel):
     content: str
     data: dict[str, Any] | None = None
     created_at: str
+    metadata: "MessageMetadata | None" = None
+
+
+class MessageMetadata(BaseModel):
+    duration_ms: float
+    model_name: str | None = None
+    llm_requests: int | None = None
+    input_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    output_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    total_tokens: int | None = None
+    estimated_cost_usd: Decimal | None = None
 
 
 metadata = MetaData()
@@ -119,8 +135,40 @@ audit_turns = Table(
     Column("sql_attempt_count", Integer, nullable=False),
     Column("success", Boolean, nullable=False),
     Column("error", Unicode(200)),
+    Column(
+        "assistant_message_id",
+        identity_type,
+        ForeignKey(f"{APP_DB_SCHEMA}.app_messages.message_id"),
+        nullable=True,
+    ),
+    Column("model_name", Unicode(100)),
+    Column("llm_requests", Integer),
+    Column("input_tokens", BigInteger),
+    Column("cached_input_tokens", BigInteger),
+    Column("output_tokens", BigInteger),
+    Column("reasoning_tokens", BigInteger),
+    Column("total_tokens", BigInteger),
+    Column("estimated_cost_usd", Numeric(19, 8)),
     Index("ix_app_audit_turns_conversation", "conversation_id", "timestamp"),
+    CheckConstraint(
+        "(llm_requests IS NULL OR llm_requests >= 0)"
+        " AND (input_tokens IS NULL OR input_tokens >= 0)"
+        " AND (cached_input_tokens IS NULL OR cached_input_tokens >= 0)"
+        " AND (output_tokens IS NULL OR output_tokens >= 0)"
+        " AND (reasoning_tokens IS NULL OR reasoning_tokens >= 0)"
+        " AND (total_tokens IS NULL OR total_tokens >= 0)"
+        " AND (estimated_cost_usd IS NULL OR estimated_cost_usd >= 0)",
+        name="CK_app_audit_turns_usage_nonnegative",
+    ),
     schema=APP_DB_SCHEMA,
+)
+
+Index(
+    "UX_app_audit_turns_assistant_message",
+    audit_turns.c.assistant_message_id,
+    unique=True,
+    sqlite_where=audit_turns.c.assistant_message_id.is_not(None),
+    mssql_where=audit_turns.c.assistant_message_id.is_not(None),
 )
 
 audit_sql_attempts = Table(
@@ -248,7 +296,23 @@ class ConversationStore:
         self.get_conversation(conversation_id, user_id)
         with self.engine.connect() as connection:
             rows = connection.execute(
-                select(messages)
+                select(
+                    messages,
+                    audit_turns.c.assistant_message_id.label("audit_assistant_message_id"),
+                    audit_turns.c.duration_ms.label("audit_duration_ms"),
+                    audit_turns.c.model_name,
+                    audit_turns.c.llm_requests,
+                    audit_turns.c.input_tokens,
+                    audit_turns.c.cached_input_tokens,
+                    audit_turns.c.output_tokens,
+                    audit_turns.c.reasoning_tokens,
+                    audit_turns.c.total_tokens,
+                    audit_turns.c.estimated_cost_usd,
+                )
+                .outerjoin(
+                    audit_turns,
+                    audit_turns.c.assistant_message_id == messages.c.message_id,
+                )
                 .where(messages.c.conversation_id == conversation_id)
                 .order_by(messages.c.message_id)
             ).fetchall()
@@ -256,12 +320,26 @@ class ConversationStore:
 
     @staticmethod
     def _message(row: Any) -> ConversationMessage:
+        message_metadata = None
+        if getattr(row, "audit_assistant_message_id", None) is not None:
+            message_metadata = MessageMetadata(
+                duration_ms=row.audit_duration_ms,
+                model_name=row.model_name,
+                llm_requests=row.llm_requests,
+                input_tokens=row.input_tokens,
+                cached_input_tokens=row.cached_input_tokens,
+                output_tokens=row.output_tokens,
+                reasoning_tokens=row.reasoning_tokens,
+                total_tokens=row.total_tokens,
+                estimated_cost_usd=row.estimated_cost_usd,
+            )
         return ConversationMessage(
             message_id=row.message_id,
             role=row.role,
             content=row.content,
             data=json.loads(row.data_json) if row.data_json else None,
             created_at=_isoformat(row.created_at),
+            metadata=message_metadata,
         )
 
     def rename_conversation(
@@ -335,6 +413,8 @@ class ConversationStore:
         sql_durations_ms: Iterable[float],
         audit_success: bool = True,
         audit_error: str | None = None,
+        model_name: str | None = None,
+        usage: AgentUsage | None = None,
     ) -> tuple[ConversationMessage, ConversationMessage]:
         timestamp = _now()
         attempts = list(sql_history)
@@ -382,6 +462,9 @@ class ConversationStore:
                 duration_ms,
                 attempts,
                 durations,
+                assistant_message_id=assistant_id,
+                model_name=model_name,
+                usage=usage,
                 success=audit_success,
                 error=audit_error[:200] if audit_error else None,
             )
@@ -398,6 +481,21 @@ class ConversationStore:
                 content=assistant_content,
                 data=data,
                 created_at=timestamp.isoformat(),
+                metadata=MessageMetadata(
+                    duration_ms=duration_ms,
+                    model_name=model_name,
+                    llm_requests=usage.requests if usage else None,
+                    input_tokens=usage.input_tokens if usage else None,
+                    cached_input_tokens=usage.cached_input_tokens if usage else None,
+                    output_tokens=usage.output_tokens if usage else None,
+                    reasoning_tokens=usage.reasoning_tokens if usage else None,
+                    total_tokens=usage.total_tokens if usage else None,
+                    estimated_cost_usd=(
+                        estimate_cost_usd(model_name, usage)
+                        if model_name is not None and usage is not None
+                        else None
+                    ),
+                ),
             ),
         )
 
@@ -430,6 +528,9 @@ class ConversationStore:
                 duration_ms,
                 attempts,
                 list(sql_durations_ms),
+                assistant_message_id=None,
+                model_name=None,
+                usage=None,
                 success=False,
                 error=error[:200],
             )
@@ -444,9 +545,17 @@ class ConversationStore:
         attempts: list[dict[str, Any]],
         durations: list[float],
         *,
+        assistant_message_id: int | None,
+        model_name: str | None,
+        usage: AgentUsage | None,
         success: bool,
         error: str | None,
     ) -> None:
+        estimated_cost = (
+            estimate_cost_usd(model_name, usage)
+            if model_name is not None and usage is not None
+            else None
+        )
         audit_id = connection.execute(
             insert(audit_turns).values(
                 conversation_id=conversation_id,
@@ -456,6 +565,15 @@ class ConversationStore:
                 sql_attempt_count=len(attempts),
                 success=success,
                 error=error,
+                assistant_message_id=assistant_message_id,
+                model_name=model_name,
+                llm_requests=usage.requests if usage else None,
+                input_tokens=usage.input_tokens if usage else None,
+                cached_input_tokens=usage.cached_input_tokens if usage else None,
+                output_tokens=usage.output_tokens if usage else None,
+                reasoning_tokens=usage.reasoning_tokens if usage else None,
+                total_tokens=usage.total_tokens if usage else None,
+                estimated_cost_usd=estimated_cost,
             )
         ).inserted_primary_key[0]
         for index, attempt in enumerate(attempts):

@@ -9,6 +9,7 @@ from agents import RunContextWrapper, function_tool
 
 from .config import Settings
 from .sql_guard import SqlGuardError, validate_readonly_sql
+from .usage import AgentUsage
 
 SqlExecutor = Callable[[str], dict[str, Any]]
 
@@ -21,6 +22,7 @@ class BiAgentContext:
     latest_result: dict[str, Any] | None = field(default=None)
     sql_history: list[dict[str, Any]] = field(default_factory=list)
     sql_durations_ms: list[float] = field(default_factory=list)
+    usage: AgentUsage | None = None
 
 
 def _safe_error_message(error: Exception, settings: Settings) -> str:

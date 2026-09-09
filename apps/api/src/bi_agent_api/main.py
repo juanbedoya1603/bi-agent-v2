@@ -328,23 +328,6 @@ async def reset_user_password(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@app.post("/api/v1/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, _: AgentUserDependency) -> ChatResponse:
-    try:
-        answer, context = await answer_question(request.message, get_settings())
-    except ValueError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    except Exception as error:
-        raise HTTPException(
-            status_code=502,
-            detail="No fue posible completar la consulta analítica.",
-        ) from error
-    data = (
-        context.latest_result if context.latest_result and context.latest_result.get("ok") else None
-    )
-    return ChatResponse(answer=answer, data=data)
-
-
 @app.post("/api/v1/conversations", response_model=ConversationSummary, status_code=201)
 async def create_conversation(
     store: ConversationStoreDependency,
@@ -437,9 +420,10 @@ async def send_conversation_message(
             session = store.sdk_session(conversation_id, user.user_id)
             try:
                 session_item_count = len(await session.get_items())
+                settings = get_settings()
                 answer, context = await answer_question(
                     request.message,
-                    get_settings(),
+                    settings,
                     session=session,
                 )
                 data = (
@@ -465,6 +449,8 @@ async def send_conversation_message(
                         sql_durations_ms=getattr(context, "sql_durations_ms", ()),
                         audit_success=latest_error is None,
                         audit_error=latest_error,
+                        model_name=settings.openai_model,
+                        usage=getattr(context, "usage", None),
                     )
                 except Exception:
                     items_added = max(0, len(await session.get_items()) - session_item_count)

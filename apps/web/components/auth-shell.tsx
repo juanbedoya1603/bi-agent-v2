@@ -258,15 +258,15 @@ export function AuthShell() {
   const [loading, setLoading] = useState(true);
   const [manageUsers, setManageUsers] = useState(false);
 
+  async function logout() {
+    try { await api.logout(); } finally { setUser(null); setManageUsers(false); }
+  }
+
   useEffect(() => { api.me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false)); }, []);
   if (loading) return <main className="auth-page"><RefreshCw className="spin" aria-label="Cargando" /></main>;
   if (!user) return <Login onLogin={setUser} />;
   if (user.must_change_password) {
-    return <ChangePassword user={user} onBackToLogin={() => setUser(null)} onChanged={setUser} />;
-  }
-
-  async function logout() {
-    try { await api.logout(); } finally { setUser(null); setManageUsers(false); }
+    return <ChangePassword user={user} onBackToLogin={() => void logout()} onChanged={setUser} />;
   }
 
   return <><ChatWorkspace user={user} onLogout={() => void logout()} onManageUsers={() => setManageUsers(true)} />{manageUsers && <UsersPanel onClose={() => setManageUsers(false)} />}</>;
