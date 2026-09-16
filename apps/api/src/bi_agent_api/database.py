@@ -117,6 +117,7 @@ def execute_query(sql: str, settings: Settings) -> dict[str, Any]:
     try:
         _load_azure_extension(connection)
         _register_azure_secret(connection, connection_string)
+        connection.execute("SET default_collation = 'NOCASE.NOACCENT'")
         _create_views(connection, settings)
 
         cursor = _execute_with_timeout(connection, sql, settings.query_timeout_seconds)

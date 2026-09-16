@@ -24,7 +24,7 @@ def _local_views(connection: Any, _settings: Settings) -> None:
     connection.execute(
         """
         CREATE VIEW dbo.VW_Stores AS
-        SELECT * FROM (VALUES (10, 'BOGOTA')) AS stores(idPartner, cityName)
+        SELECT * FROM (VALUES (10, 'Medellín')) AS stores(idPartner, cityName)
         """
     )
     connection.execute(
@@ -95,6 +95,17 @@ def test_execute_query_exposes_all_three_logical_views(monkeypatch: Any) -> None
         result = execute_query(sql, db_settings())
         assert result["ok"] is True, view
         assert result["row_count"] == expected_row_count, view
+
+
+def test_execute_query_uses_case_and_accent_insensitive_collation(monkeypatch: Any) -> None:
+    _use_local_views(monkeypatch)
+
+    result = execute_query(
+        "SELECT cityName FROM dbo.VW_Stores WHERE cityName = 'MEDELLIN'",
+        db_settings(),
+    )
+
+    assert result["rows"] == [["Medellín"]]
 
 
 def test_execute_query_fetches_201_and_returns_only_200(monkeypatch: Any) -> None:

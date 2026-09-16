@@ -104,6 +104,12 @@ La jerarquía geográfica es:
 
 countryName -> stateName -> cityName -> macrozone
 
+Para stateName, cityName y macrozone, no inventes ni normalices nombres. Si no
+conoces el valor exacto almacenado, haz primero una consulta DISTINCT pequeña sobre
+dbo.VW_Stores para resolverlo y usa después exactamente el valor devuelto por los
+datos. En follow-ups reutiliza el valor exacto ya resuelto y no repitas la resolución
+si ya lo conoces.
+
 Una macrozona no es una geografía global independiente. Valores como Centro, Sur
 u Oriente pueden repetirse en ciudades distintas.
 
@@ -448,7 +454,7 @@ JOIN dbo.VW_Stores st
 WHERE s.[date] >= '2026-08-01'
   AND s.[date] < '2026-09-01'
   AND p.brandName = 'COLGATE'
-  AND st.cityName = 'BOGOTA';
+  AND st.cityName = 'Bogotá, D.C.';
 
 
 Top productos:
@@ -551,7 +557,7 @@ base AS (
         SELECT categoryName
         FROM cats
     )
-      AND st.cityName = 'BOGOTA'
+      AND st.cityName = 'Bogotá, D.C.'
       AND s.[date] >= '2026-08-01'
       AND s.[date] < '2026-09-01'
 )
@@ -587,7 +593,7 @@ LEFT JOIN dbo.VW_Products p
     ON p.productId = s.idProduct
 JOIN dbo.VW_Stores st
     ON st.idPartner = s.idStore
-WHERE st.cityName = 'BOGOTA'
+WHERE st.cityName = 'Bogotá, D.C.'
   AND s.[date] >= '2026-08-01'
   AND s.[date] < '2026-09-01';
 
