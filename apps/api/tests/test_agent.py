@@ -5,13 +5,25 @@ from typing import Any
 import pytest
 from agents import SQLiteSession
 from agents.testing import ScriptedModel, assistant_message, function_call
+from sqlglot import transpile
 
 from bi_agent_api.agent import answer_question, build_agent
 from bi_agent_api.config import Settings
+from bi_agent_api.tools import _safe_error_message
 
 
 def make_settings() -> Settings:
     return Settings(_env_file=None, openai_api_key="", openai_model="test-model")
+
+
+def test_sql_error_redacts_adls_connection_string() -> None:
+    secret = "DefaultEndpointsProtocol=https;AccountName=agent;AccountKey=very-secret"
+    settings = Settings(_env_file=None, azure_storage_connection_string=secret)
+
+    message = _safe_error_message(RuntimeError(f"ADLS failed: {secret}"), settings)
+
+    assert secret not in message
+    assert "[REDACTED]" in message
 
 
 def test_agent_disables_parallel_tool_calls_and_response_storage() -> None:
@@ -55,7 +67,7 @@ async def test_runner_calls_tool_and_uses_its_output() -> None:
     )
 
     assert answer == "Colgate vendió $1.234 en Bogotá en agosto de 2026."
-    assert executed == [sql]
+    assert executed == [transpile(sql, read="tsql", write="duckdb")[0]]
     assert context.sql_attempts == 1
     assert context.sql_history == [
         {"sql": sql, "guard_passed": True, "result": context.latest_result}
@@ -77,10 +89,12 @@ async def test_tool_error_returns_to_model_and_sql_can_be_corrected() -> None:
         ]
     )
     attempts = 0
+    received_sql: list[str] = []
 
     def executor(sql: str) -> dict[str, Any]:
         nonlocal attempts
         attempts += 1
+        received_sql.append(sql)
         if sql == invalid_sql:
             raise RuntimeError("Invalid column name 'badColumn'.")
         return {
@@ -100,6 +114,8 @@ async def test_tool_error_returns_to_model_and_sql_can_be_corrected() -> None:
 
     assert attempts == 2
     assert context.sql_attempts == 2
+    assert "LIMIT 1" in received_sql[1]
+    assert "TOP" not in received_sql[1].upper()
     assert "Crema Dental Colgate" in answer
     error_input = json.dumps(model.calls[1].input, default=str)
     assert "Invalid column name" in error_input

@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Any
 
 from agents import RunContextWrapper, function_tool
+from sqlglot import transpile
 
 from .config import Settings
 from .sql_guard import SqlGuardError, validate_readonly_sql
@@ -33,6 +34,7 @@ def _safe_error_message(error: Exception, settings: Settings) -> str:
         settings.analytics_db_password,
         settings.analytics_db_user,
         settings.analytics_db_host,
+        settings.azure_storage_connection_string.get_secret_value(),
     ):
         if secret:
             message = message.replace(secret, "[REDACTED]")
@@ -74,7 +76,8 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
 
     history_entry["guard_passed"] = True
     try:
-        result = await asyncio.to_thread(context.sql_executor, validated_sql)
+        duckdb_sql = transpile(validated_sql, read="tsql", write="duckdb")[0]
+        result = await asyncio.to_thread(context.sql_executor, duckdb_sql)
     except Exception as error:  # La tool convierte errores DB en observaciones corregibles.
         result = {
             "ok": False,
