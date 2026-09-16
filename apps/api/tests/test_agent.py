@@ -78,6 +78,44 @@ async def test_runner_calls_tool_and_uses_its_output() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tool_maps_sql_server_collation_to_duckdb_collation() -> None:
+    sql = """
+        SELECT DISTINCT st.cityName
+        FROM dbo.VW_Stores st
+        WHERE st.cityName COLLATE Latin1_General_CI_AI LIKE '%medellin%'
+    """
+    model = ScriptedModel(
+        [
+            [function_call("run_readonly_sql", {"sql": sql}, call_id="sql-1")],
+            [assistant_message("Medellín")],
+        ]
+    )
+    executed: list[str] = []
+
+    def executor(received_sql: str) -> dict[str, Any]:
+        executed.append(received_sql)
+        return {
+            "ok": True,
+            "columns": ["cityName"],
+            "rows": [["Medellín"]],
+            "row_count": 1,
+            "truncated": False,
+        }
+
+    await answer_question(
+        "Busca Medellín",
+        make_settings(),
+        model=model,
+        sql_executor=executor,
+    )
+
+    assert len(executed) == 1
+    assert "COLLATE NOCASE.NOACCENT" in executed[0]
+    assert "LATIN1_GENERAL_CI_AI" not in executed[0].upper()
+    model.assert_complete()
+
+
+@pytest.mark.asyncio
 async def test_tool_error_returns_to_model_and_sql_can_be_corrected() -> None:
     invalid_sql = "SELECT badColumn FROM dbo.VW_Products"
     corrected_sql = "SELECT TOP 1 productName FROM dbo.VW_Products"

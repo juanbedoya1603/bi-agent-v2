@@ -6,7 +6,7 @@ from time import perf_counter
 from typing import Any
 
 from agents import RunContextWrapper, function_tool
-from sqlglot import transpile
+from sqlglot import exp, parse_one, transpile
 
 from .config import Settings
 from .sql_guard import SqlGuardError, validate_readonly_sql
@@ -24,6 +24,14 @@ class BiAgentContext:
     sql_history: list[dict[str, Any]] = field(default_factory=list)
     sql_durations_ms: list[float] = field(default_factory=list)
     usage: AgentUsage | None = None
+
+
+def _transpile_to_duckdb(sql: str) -> str:
+    duckdb_sql = transpile(sql, read="tsql", write="duckdb")[0]
+    expression = parse_one(duckdb_sql, read="duckdb")
+    for collate in expression.find_all(exp.Collate):
+        collate.set("expression", exp.Var(this="NOCASE.NOACCENT"))
+    return expression.sql(dialect="duckdb")
 
 
 def _safe_error_message(error: Exception, settings: Settings) -> str:
@@ -76,7 +84,7 @@ async def _run_readonly_sql(wrapper: RunContextWrapper[BiAgentContext], sql: str
 
     history_entry["guard_passed"] = True
     try:
-        duckdb_sql = transpile(validated_sql, read="tsql", write="duckdb")[0]
+        duckdb_sql = _transpile_to_duckdb(validated_sql)
         result = await asyncio.to_thread(context.sql_executor, duckdb_sql)
     except Exception as error:  # La tool convierte errores DB en observaciones corregibles.
         result = {
