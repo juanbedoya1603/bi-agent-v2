@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     app_db_user: str = ""
     app_db_password: str = ""
     app_db_driver: str = "ODBC Driver 18 for SQL Server"
+
+    azure_storage_connection_string: SecretStr = SecretStr("")
+    adls_filesystem: str = "agentbi"
+    adls_base_path: str = "TiendasOn"
 
     query_timeout_seconds: int = Field(default=600, gt=0)
     max_result_rows: int = Field(default=200, ge=1, le=200)

@@ -9,6 +9,8 @@ description = "Asistente interno de BI sobre SQL Server"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "argon2-cffi>=23.1,<26",
+    "azure-storage-file-datalake>=12.25,<13",
+    "duckdb>=1.4,<2",
     "fastapi>=0.115,<1",
     "openai-agents>=0.22,<0.23",
     "openpyxl>=3.1,<4",
@@ -18,6 +20,7 @@ dependencies = [
     "sqlalchemy>=2.0,<3",
     "tzdata>=2025.2; sys_platform == 'win32'",
     "uvicorn[standard]>=0.34,<1",
+    "pyarrow>=18,<24",
 ]
 
 [project.optional-dependencies]
