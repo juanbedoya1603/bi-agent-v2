@@ -2,9 +2,12 @@
 
 El proyecto es interno, pero una tool que ejecuta SQL necesita controles simples y fuertes.
 
-## Primera barrera: permisos de base de datos
+## Ejecución analítica actual
 
-El usuario utilizado por la aplicación debe tener únicamente `SELECT` sobre:
+El executor productivo no consulta un SQL Server/Fabric analítico. El flujo
+actual recibe T-SQL, lo valida, lo transpila a DuckDB SQL con `sqlglot` y lo
+ejecuta en DuckDB. DuckDB crea únicamente estas tres views lógicas desde
+Parquet remoto en ADLS Gen2:
 
 ```text
 dbo.VW_SalesLast13Months
@@ -12,7 +15,21 @@ dbo.VW_Stores
 dbo.VW_Products
 ```
 
-No confiar solo en el prompt.
+La App DB SQL Server es independiente y se usa para autenticación, sesiones
+web, conversaciones, auditoría y uso; la tool analítica no puede consultarla.
+
+## Primera barrera: superficie de datos
+
+La aplicación solo expone al modelo las tres views lógicas autorizadas:
+
+```text
+dbo.VW_SalesLast13Months
+dbo.VW_Stores
+dbo.VW_Products
+```
+
+No confiar solo en el prompt: la whitelist del guard y la construcción controlada
+de views en DuckDB deben mantenerse alineadas.
 
 ## Segunda barrera: AST validator
 
@@ -61,9 +78,13 @@ Permitir aliases.
 - `QUERY_TIMEOUT_SECONDS=600`
 - `MAX_RESULT_ROWS=200`
 
-`MAX_RESULT_ROWS` limita lo que vuelve a la aplicación, no el número de filas que SQL Server puede agregar internamente.
+`MAX_RESULT_ROWS` limita lo que vuelve a la aplicación, no el número de filas que DuckDB puede agregar internamente.
 
-Implementación recomendada: ejecutar normalmente y hacer `fetchmany(MAX_RESULT_ROWS + 1)` para detectar truncamiento.
+Implementación actual: ejecutar normalmente y hacer `fetchmany(MAX_RESULT_ROWS + 1)` para detectar truncamiento.
+
+Después de pasar el guard, `sqlglot` transpila la sentencia de T-SQL a DuckDB
+SQL. La consulta resultante solo puede operar sobre las tres views lógicas
+creadas por el executor a partir de ADLS.
 
 ## Errores
 

@@ -144,11 +144,12 @@ de que `taxonomy-organizer` mantenga disponible su Caddy, la red externa
 
 ## Rol de Rich / Data Engineering
 
-Rich / Data Engineering debe cargar y refrescar los Parquet de ADLS que consume
-BI Agent, incluyendo ventas, tiendas y productos. Debe preservar las rutas y
-los esquemas esperados por DuckDB y validar que todos los archivos de cada
-fuente sean compatibles. También debe comprobar fechas, volumen y completitud
-del histórico antes de declarar lista la migración.
+Rich / Data Engineering es responsable de subir todos los archivos Parquet a
+ADLS Gen2 y mantenerlos actualizados para BI Agent, incluyendo ventas, tiendas
+y productos. Debe preservar las rutas y los esquemas esperados por DuckDB y
+validar que todos los archivos de cada fuente sean compatibles. También debe
+comprobar fechas, volumen y completitud del histórico antes de declarar lista
+la migración.
 
 La aplicación no contiene un proceso de ingesta ni un scheduler de refresh: lee
 lo que esté disponible en ADLS durante cada consulta.

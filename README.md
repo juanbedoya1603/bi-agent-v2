@@ -5,17 +5,17 @@ Asistente interno de Business Intelligence que convierte preguntas en lenguaje n
 ![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI 0.141](https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white)
 ![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)
-![SQL Server](https://img.shields.io/badge/SQL_Server%20%2F%20Fabric-Analytics-CC2927?logo=microsoftsqlserver&logoColor=white)
+![DuckDB / ADLS](https://img.shields.io/badge/DuckDB%20%2F%20ADLS-Analytics-FFF?logo=duckdb&logoColor=black)
 
 ## Overview
 
-BI Agent permite que un equipo consulte información comercial sin escribir SQL manualmente. El usuario pregunta en español, un agente genera T-SQL, la aplicación valida la consulta, SQL Server/Fabric devuelve las filas y el agente construye una respuesta comprensible.
+BI Agent permite que un equipo consulte información comercial sin escribir SQL manualmente. El usuario pregunta en español, el OpenAI Agents SDK genera T-SQL, la aplicación valida la consulta, `sqlglot` lo transpila a DuckDB SQL, DuckDB consulta Parquet remoto en ADLS Gen2 y el agente construye una respuesta comprensible.
 
 ```text
-pregunta → agente → SQL → validación read-only → datos → respuesta
+pregunta → Agent → T-SQL → SQL Guard → DuckDB SQL → DuckDB → ADLS Parquet → resultados → Agent → respuesta
 ```
 
-El diseño prioriza confiabilidad y seguridad: el modelo solo accede a una herramienta de lectura, cada consulta pasa por validación AST y la identidad analítica tiene permisos restringidos. Si no existe una ejecución SQL exitosa, el agente no debe inventar cifras.
+El diseño prioriza confiabilidad y seguridad: el modelo solo accede a una herramienta de lectura, cada consulta pasa por validación AST y DuckDB expone únicamente las tres views lógicas autorizadas. Si no existe una ejecución SQL exitosa, el agente no debe inventar cifras.
 
 ## Key Features
 
@@ -42,28 +42,34 @@ flowchart LR
     AUTH --> APPDB["App DB · SQL Server"]
 
     API --> SESSION["SQLiteSession"]
-    API --> AGENT["BI Agent"]
+    API --> SDK["OpenAI Agents SDK"]
+    SDK --> AGENT["BI Agent"]
     SESSION -. "contexto multi-turn" .-> AGENT
 
     AGENT <--> OPENAI["OpenAI API"]
     AGENT --> TOOL["run_readonly_sql"]
     TOOL --> GUARD["sqlglot SQL Guard"]
-    GUARD --> ODBC["pyodbc"]
-    ODBC --> ANALYTICS["SQL Server / Fabric Analytics"]
+    GUARD --> TRANSPILE["T-SQL → DuckDB SQL"]
+    TRANSPILE --> DUCKDB["DuckDB"]
+    DUCKDB --> VIEWS["Views lógicas dbo.*"]
+    VIEWS --> ADLS["Parquet remoto · ADLS Gen2"]
+    DUCKDB --> RESULT["Resultados"]
+    RESULT --> AGENT
 ```
 
-La **App DB** y la **Analytics DB** son bases independientes con credenciales y responsabilidades diferentes. La primera almacena usuarios, sesiones web, conversaciones y auditoría. El agente no puede consultarla: su única herramienta SQL apunta a la base analítica. `SQLiteSession` conserva el contexto multi-turn del agente por conversación.
+La **App DB** es una base SQL Server independiente, conectada mediante SQLAlchemy/pyodbc, y almacena usuarios, sesiones web, conversaciones, mensajes, auditoría y uso. El agente no puede consultarla: su única herramienta analítica apunta a DuckDB. DuckDB crea en memoria las tres views lógicas autorizadas desde Parquet remoto de ADLS Gen2. `SQLiteSession` conserva el contexto multi-turn del agente por conversación.
 
 ## How it works
 
 1. El usuario envía una pregunta desde el chat.
 2. FastAPI valida su sesión y el ownership de la conversación.
-3. El agente interpreta el contexto y genera una consulta T-SQL.
-4. `run_readonly_sql` limita los intentos y envía la consulta al guard AST.
-5. El guard exige una sola consulta de lectura sobre las views autorizadas.
-6. `pyodbc` ejecuta la consulta con timeout y una identidad analítica read-only.
-7. El agente interpreta las filas y redacta la respuesta; la UI presenta texto Markdown y, cuando aplica, una tabla.
-8. La App DB persiste mensajes, uso y auditoría de cada intento SQL.
+3. El OpenAI Agents SDK ejecuta el BI Agent, que interpreta el contexto y genera una consulta T-SQL.
+4. `run_readonly_sql` limita los intentos y envía la consulta al SQL Guard sobre T-SQL.
+5. El guard exige una sola consulta de lectura sobre las tres views autorizadas.
+6. `sqlglot` transpila el T-SQL validado a DuckDB SQL.
+7. DuckDB crea las views lógicas desde ADLS Gen2, ejecuta la consulta y devuelve resultados al Agent.
+8. El agente interpreta las filas y redacta la respuesta; la UI presenta texto Markdown y, cuando aplica, una tabla.
+9. La App DB persiste mensajes, uso y auditoría de cada intento SQL, mientras `SQLiteSession` mantiene el contexto multi-turn.
 
 ## Data Model
 
@@ -106,17 +112,18 @@ Los filtros temporales, geográficos y de producto se aplican de forma consisten
 - Solo acepta `SELECT` o `WITH ... SELECT`; bloquea DDL, DML, `EXEC` y `SELECT INTO`.
 - Exige una sola sentencia y rechaza otras bases, linked servers y objetos fuera de la whitelist.
 - Valida T-SQL mediante el AST de `sqlglot`, no con coincidencias de texto.
+- Transpila el T-SQL validado a DuckDB SQL antes de ejecutar la consulta.
+- DuckDB solo expone las tres views lógicas autorizadas sobre Parquet de ADLS Gen2; no accede a la App DB.
 - Permite como máximo 3 intentos SQL por turno.
 - Devuelve como máximo 200 filas a la aplicación, sin limitar las agregaciones internas.
 - Usa un timeout configurable de 600 segundos por defecto.
-- Conecta a Analytics con `ApplicationIntent=ReadOnly` y requiere una identidad con permisos `SELECT` únicamente sobre las tres views.
-- Mantiene credenciales de OpenAI y SQL Server exclusivamente en el backend.
+- Mantiene las credenciales de OpenAI, App DB y ADLS exclusivamente en el backend.
 - Usa cookies de sesión `HttpOnly`, `SameSite=Lax` y `Secure` en producción.
 - Protege contraseñas con Argon2id y almacena un hash SHA-256 del token de sesión.
 - Aísla conversaciones y auditoría por `user_id` y registra cada intento SQL.
 - Deshabilita el tracing del SDK y la captura de datos sensibles del modelo y las herramientas.
 
-> La validación de aplicación complementa los permisos reales de SQL Server; no los sustituye.
+> La validación de aplicación complementa los controles de acceso de App DB y ADLS; no los sustituye.
 
 ## Tech Stack
 
@@ -125,8 +132,8 @@ Los filtros temporales, geográficos y de producto se aplican de forma consisten
 | Frontend | Next.js 16.3.4, React 19.2.8, TypeScript 5.9.3, React Markdown |
 | Backend | Python 3.11, FastAPI 0.141.1, Uvicorn, Pydantic Settings |
 | AI | OpenAI Agents SDK 0.22.1, OpenAI Responses API |
-| Analytics | SQL Server / Microsoft Fabric, `pyodbc` 5.3.0, `sqlglot` 28.10.1 |
-| App DB | SQL Server, SQLAlchemy 2.0.52 |
+| Analytics | DuckDB, Parquet remoto en ADLS Gen2, `sqlglot` 28.10.1 |
+| App DB | SQL Server, SQLAlchemy 2.0.52, `pyodbc` 5.3.0 |
 | Sessions | SQLite mediante `SQLiteSession` del Agents SDK |
 | Export | `openpyxl` 3.1.5 |
 | Testing | pytest 8.4.2, Ruff 0.16.6, ESLint 9.39.1 |
@@ -137,9 +144,9 @@ Los filtros temporales, geográficos y de producto se aplican de forma consisten
 
 - Python 3.11
 - Node.js y npm compatibles con Next.js 16
-- ODBC Driver 18 for SQL Server
-- Acceso a una Analytics DB en SQL Server/Fabric
-- Acceso de lectura/escritura a una App DB independiente
+- ODBC Driver 18 for SQL Server para la App DB
+- Acceso de lectura a los Parquet remotos de ADLS Gen2
+- Acceso de lectura/escritura a una App DB SQL Server independiente
 - Una OpenAI API key
 
 ### Backend
@@ -153,7 +160,7 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ```
 
-Completa `.env` con la API key, las conexiones `ANALYTICS_DB_*` y `APP_DB_*`, y los valores opcionales de timeout, modelo y ruta de sesiones. No uses la identidad analítica para la App DB ni publiques este archivo.
+Completa `.env` con `OPENAI_API_KEY`, `APP_DB_*`, `AZURE_STORAGE_CONNECTION_STRING`, `ADLS_FILESYSTEM` y `ADLS_BASE_PATH`, además de los valores opcionales de timeout, modelo y ruta de sesiones. No publiques este archivo.
 
 ### App DB
 
@@ -233,7 +240,7 @@ npm run lint
 npm run build
 ```
 
-El proyecto incluye tests deterministas para API, autenticación, persistencia, agente y seguridad SQL; evals BI con casos versionados; un dataset holdout; y un smoke test live opcional. Las pruebas live requieren opt-in explícito mediante `RUN_LIVE_EVALS=1` o `RUN_SQL_LIVE_SMOKE=1` y pueden consumir tokens o consultar la Analytics DB.
+El proyecto incluye tests deterministas para API, autenticación, persistencia, agente y seguridad SQL; evals BI con casos versionados; un dataset holdout; y un smoke test live opcional. Las pruebas live requieren opt-in explícito mediante `RUN_LIVE_EVALS=1` o `RUN_SQL_LIVE_SMOKE=1` y pueden consumir tokens o consultar ADLS.
 
 ## Project Structure
 
@@ -249,9 +256,9 @@ bi-agent-v2/
 
 ## Project Status
 
-Las capacidades funcionales principales del MVP están implementadas: chat multi-turn, consultas gobernadas contra datos reales, autenticación, aislamiento por usuario, historial, auditoría, telemetría de uso y exportación Excel.
+Las capacidades funcionales principales del MVP están implementadas: chat multi-turn, consultas gobernadas contra datos reales, autenticación, aislamiento por usuario, historial, auditoría, telemetría de uso y exportación Excel. El deployment productivo y la migración del executor analítico a DuckDB + ADLS Gen2 están completados en la rama `migration/adls-gen2`.
 
-El siguiente paso es el deployment y la productización del sistema para su entorno operativo.
+Data Engineering es responsable de subir todos los archivos Parquet a ADLS Gen2 y mantenerlos actualizados. Antes de hacer merge a `main`, debe validar el histórico completo, incluyendo fechas, volúmenes, esquemas y resultados de las métricas BI.
 
 ## Documentation
 

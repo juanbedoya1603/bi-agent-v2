@@ -2,6 +2,18 @@
 
 El proyecto debe construirse en pocas fases y con vertical slices.
 
+## Estado actual de implementación
+
+- El deployment productivo con Docker Compose está completado.
+- La migración del executor analítico a DuckDB + Parquet en ADLS Gen2 está
+  completada en la rama `migration/adls-gen2`.
+- La rama `migration/adls-gen2` es la actualmente desplegada.
+- Data Engineering es responsable de subir todos los archivos Parquet a ADLS
+  Gen2 y mantenerlos actualizados.
+- Sigue pendiente validar el histórico completo, incluyendo fechas, esquemas,
+  volúmenes y resultados de métricas BI.
+- No se debe hacer merge a `main` hasta completar esa validación.
+
 ## Fase 1 — Base funcional
 
 Objetivo: una pregunta real llega al modelo, genera SQL, se valida, se ejecuta y vuelve una respuesta.
@@ -11,7 +23,7 @@ Entregar:
 - monorepo `apps/api` + `apps/web`;
 - FastAPI health;
 - configuración `.env`;
-- conexión SQL Server read-only;
+- executor DuckDB sobre Parquet remoto en ADLS Gen2;
 - `sqlglot` guard;
 - tool `run_readonly_sql`;
 - un `Agent` de Agents SDK;
@@ -59,7 +71,8 @@ Entregar:
 - manejo amigable de errores;
 - logs internos de SQL y duración.
 
-MVP puede usar SQLite para sesiones.
+La implementación actual usa `SQLiteSession` persistente para conservar el
+contexto multi-turn.
 
 ## Fase 4 — Extras después de validar valor
 
@@ -89,13 +102,15 @@ MVP puede usar SQLite para sesiones.
 - eliminación de `POST /api/v1/chat`; el único flujo oficial es
   `POST /api/v1/conversations/{conversation_id}/messages`.
 
-Pendiente para fases posteriores: Entra ID, deployment, dashboards/gráficas agregadas,
-presupuestos, billing y migración de Sessions fuera de SQLite.
+Pendiente para fases posteriores: validación del histórico completo por Data
+Engineering, Entra ID, dashboards/gráficas agregadas, presupuestos, billing y
+migración de Sessions fuera de SQLite.
 
 ## Definition of Done del MVP
 
 - puede responder tickets reales;
-- no puede escribir en SQL Server;
+- no puede escribir en las fuentes analíticas ni en ADLS; la App DB sí recibe el
+  estado de aplicación necesario para usuarios, conversaciones y auditoría;
 - solo consulta tres views;
 - conserva conversación básica;
 - los evals críticos son satisfactorios;
