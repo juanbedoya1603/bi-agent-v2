@@ -255,6 +255,9 @@ El siguiente paso es el deployment y la productización del sistema para su ento
 
 ## Documentation
 
+- [Deployment](docs/09-deployment.md)
+- [Operations](docs/10-operations.md)
+- [Technical Handoff](docs/11-handoff.md)
 - [Product Goal](docs/01-product-goal.md)
 - [Data Model](docs/02-data-model.md)
 - [Architecture](docs/03-architecture.md)
