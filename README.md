@@ -199,7 +199,7 @@ npm install
 npm run dev
 ```
 
-`NEXT_PUBLIC_API_URL` apunta por defecto a `http://localhost:8000`. El frontend queda disponible en `http://localhost:3000`.
+En producción/Docker Compose, `NEXT_PUBLIC_API_URL` debe quedar vacío para que frontend y API funcionen same-origin a través del gateway. En desarrollo local fuera de Docker, puede configurarse como `http://localhost:8000`. El frontend queda disponible en `http://localhost:3000`.
 
 ## Usage Examples
 
