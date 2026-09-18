@@ -46,6 +46,7 @@ def _load_azure_extension(connection: Any) -> None:
     except duckdb.Error:
         connection.execute("INSTALL azure")
         connection.execute("LOAD azure")
+    connection.execute("SET azure_transport_option_type = 'curl'")
 
 
 def _register_azure_secret(connection: Any, connection_string: str) -> None:

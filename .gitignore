@@ -1,4 +1,7 @@
 .env
+.env.*
+!**/.env.example
+!**/.env.*.example
 .pytest_cache/
 .ruff_cache/
 __pycache__/
@@ -10,3 +13,14 @@ build/
 tmp/
 apps/web/.next/
 apps/web/node_modules/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+.cloudflared/
+**/.cloudflared/
+cloudflared-runtime/
+*.key
+*.pem
+*.p12
+*.pfx

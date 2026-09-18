@@ -42,6 +42,21 @@ def _use_local_views(monkeypatch: Any) -> None:
     monkeypatch.setattr(database, "_create_views", _local_views)
 
 
+def test_load_azure_extension_uses_curl_transport() -> None:
+    statements: list[str] = []
+
+    class FakeConnection:
+        def execute(self, statement: str, *_args: Any) -> None:
+            statements.append(statement)
+
+    database._load_azure_extension(FakeConnection())
+
+    assert statements == [
+        "LOAD azure",
+        "SET azure_transport_option_type = 'curl'",
+    ]
+
+
 def test_execute_query_returns_contract_and_closes_connection(monkeypatch: Any) -> None:
     _use_local_views(monkeypatch)
     connections: list[Any] = []
