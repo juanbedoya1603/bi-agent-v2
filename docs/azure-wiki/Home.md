@@ -20,7 +20,7 @@ El usuario pregunta en lenguaje natural. El agente genera una consulta T-SQL de 
 ## Arquitectura resumida
 
 ```mermaid
-flowchart LR
+graph LR
     U[Usuario] --> W[Next.js]
     W --> API[FastAPI]
     API --> SDK[OpenAI Agents SDK]

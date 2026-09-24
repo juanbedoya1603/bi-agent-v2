@@ -3,7 +3,7 @@
 ## Flujo productivo
 
 ```mermaid
-flowchart LR
+graph LR
     U[Usuario] --> N[Next.js]
     N --> F[FastAPI]
     F --> O[OpenAI Agents SDK]
@@ -34,7 +34,7 @@ La App DB no es una fuente de métricas y el agente no puede consultarla mediant
 ## Entrada HTTPS y contenedores
 
 ```mermaid
-flowchart LR
+graph LR
     C[Caddy principal de Taxonomy Organizer] -->|proxy| E[Red externa onoff-taxonomy-organizer_default]
     E -->|alias bi-agent-gateway:80| G[Gateway BI Agent]
     G -->|/api/* y /health| B[backend:8000]
